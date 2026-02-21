@@ -10,16 +10,24 @@ const buildApiCandidates = () => {
 };
 
 const fetchWithBaseFallback = async (path, options = {}) => {
+  const { timeoutMs = 20000, ...fetchOptions } = options;
   const candidates = buildApiCandidates();
   let lastError = null;
 
   for (let idx = 0; idx < candidates.length; idx += 1) {
     const base = candidates[idx];
     const url = `${base}${path}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(url, options);
+      const response = await fetch(url, {
+        ...fetchOptions,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
       return response;
     } catch (error) {
+      clearTimeout(timeoutId);
       lastError = error;
     }
   }
@@ -67,6 +75,7 @@ export const generateClaimTestApi = async ({ file, companyIds = [] }) => {
   const response = await fetchWithBaseFallback('/generate-claim-test', {
     method: 'POST',
     body: formData,
+    timeoutMs: 12000,
   });
 
   if (!response.ok) {

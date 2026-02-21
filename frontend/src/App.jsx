@@ -285,6 +285,7 @@ function LandingPage() {
   const navigate = useNavigate();
   const howSectionRef = useRef(null);
   const [showStickyCta, setShowStickyCta] = useState(false);
+  const stickyStateRef = useRef(false);
   const { scrollYProgress } = useScroll({
     target: howSectionRef,
     offset: ["start end", "end start"],
@@ -292,7 +293,11 @@ function LandingPage() {
   const progressHeight = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
   const bgY = useTransform(scrollYProgress, [0, 1], ["0%", "16%"]);
   useMotionValueEvent(scrollYProgress, "change", (latest) => {
-    setShowStickyCta(latest > 0.12);
+    const shouldShow = latest > 0.12;
+    if (stickyStateRef.current !== shouldShow) {
+      stickyStateRef.current = shouldShow;
+      setShowStickyCta(shouldShow);
+    }
   });
   const runLandingDemo = () => {
     const demo = getDemoAnalysisResult();
@@ -314,7 +319,7 @@ function LandingPage() {
   };
 
   return (
-    <div className="relative min-h-screen snap-y snap-mandatory overflow-y-auto bg-[#111111] text-white [background:radial-gradient(circle_at_50%_-12%,#2f2f2f_0%,#171717_42%,#111111_70%)]">
+    <div className="relative min-h-screen overflow-y-auto bg-[#111111] text-white md:snap-y md:snap-mandatory [background:radial-gradient(circle_at_50%_-12%,#2f2f2f_0%,#171717_42%,#111111_70%)]">
       <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_12%_18%,rgba(16,185,129,0.14),transparent_34%),radial-gradient(circle_at_88%_22%,rgba(255,255,255,0.07),transparent_28%),radial-gradient(circle_at_52%_84%,rgba(20,184,166,0.07),transparent_30%)]" />
       <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.08] [background-image:linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] [background-size:44px_44px]" />
       {showStickyCta ? (
@@ -398,7 +403,7 @@ function LandingPage() {
             initial={{ opacity: 0, y: 22 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, delay: 0.28 }}
-            className="relative mt-10 w-full overflow-hidden"
+            className="relative left-1/2 mt-10 w-screen -translate-x-1/2 overflow-hidden"
           >
             <div className="relative overflow-hidden border-y border-stone-700/70 bg-gradient-to-r from-[#0b0b0c] via-[#111112] to-[#0b0b0c] py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(255,255,255,0.06),0_12px_28px_rgba(0,0,0,0.35)]">
               <div className="pointer-events-none absolute inset-y-0 left-0 w-28 bg-gradient-to-r from-black/55 to-transparent" />
@@ -868,6 +873,10 @@ function AnalyzePage() {
   const scoreDelta = hasAnalysis && previousScore !== null
     ? (Number(activeResult?.score || 0) - previousScore)
     : null;
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [location.pathname]);
 
   const handleResumeFileSelect = (file) => {
     const nextFile = file || null;
@@ -2167,7 +2176,8 @@ function RoleMatchPage() {
   ])];
   const extractedSet = new Set(extracted.map((s) => normalizeSkill(s)));
   const hasJdInput = Boolean(jdText.trim());
-  const requiredSkills = hasAnalysis && hasJdInput ? jdSkills : [];
+  const canShowRoleMatchResults = hasDetectedJD && jdSkills.length > 0;
+  const requiredSkills = hasAnalysis && canShowRoleMatchResults ? jdSkills : [];
   const matched = requiredSkills.filter((s) => extractedSet.has(normalizeSkill(s)));
   const missing = requiredSkills.filter((s) => !extractedSet.has(normalizeSkill(s)));
   const computeWeightedFit = () => {
@@ -2252,6 +2262,13 @@ function RoleMatchPage() {
   };
 
   const detectSkillsFromJD = () => {
+    if (!jdText.trim()) {
+      setHasDetectedJD(false);
+      setJdSkills([]);
+      setJdSignal({ mustHave: [], preferred: [], tools: [] });
+      appState.setJdDetected(false);
+      return;
+    }
     setHasDetectedJD(true);
     const result = detectSkillsFromText(jdText);
     setJdSkills(result.skills);
@@ -2263,22 +2280,6 @@ function RoleMatchPage() {
       }
     });
   };
-
-  useEffect(() => {
-    if (!jdText.trim()) {
-      setHasDetectedJD(false);
-      setJdSkills([]);
-      setJdSignal({ mustHave: [], preferred: [], tools: [] });
-      appState.setJdDetected(false);
-      return;
-    }
-
-    const result = detectSkillsFromText(jdText);
-    setHasDetectedJD(true);
-    setJdSkills(result.skills);
-    setJdSignal(result.signal);
-    appState.setJdDetected(Boolean(result.skills.length));
-  }, [jdText]);
 
   return (
     <div className="analyze-bg analyze-flat ats-flat min-h-screen">
@@ -2307,14 +2308,21 @@ function RoleMatchPage() {
               <p className="text-sm font-semibold text-slate-700">Job Description Input</p>
               <textarea
                 value={jdText}
-                onChange={(e) => setJdText(e.target.value)}
-                placeholder="Paste JD here. JD add karte hi resume vs JD comparison auto-generate hoga."
+                onChange={(e) => {
+                  setJdText(e.target.value);
+                  setHasDetectedJD(false);
+                  setJdSkills([]);
+                  setJdSignal({ mustHave: [], preferred: [], tools: [] });
+                  appState.setJdDetected(false);
+                }}
+                placeholder="Paste JD here. Result tabhi show hoga jab aap Detect Skills from JD click karoge."
                 className="mt-2 h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
               />
               <div className="mt-2 flex gap-2">
                 <button
                   onClick={detectSkillsFromJD}
-                  className="rounded-lg border border-slate-400 bg-white px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-100"
+                  disabled={!hasJdInput}
+                  className="rounded-lg border border-slate-400 bg-white px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-100 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400"
                 >
                   Detect Skills from JD
                 </button>
@@ -2333,7 +2341,7 @@ function RoleMatchPage() {
               </div>
               <p className="mt-2 text-xs text-slate-500">
                 Mode: {!hasDetectedJD
-                  ? "Waiting for JD input"
+                  ? "Waiting for skill detection"
                   : !jdText.trim()
                   ? "Waiting for JD input"
                   : jdSkills.length
@@ -2362,9 +2370,13 @@ function RoleMatchPage() {
               <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
                 JD paste karo, tabhi Role Match activity aur comparison result show honge.
               </div>
+            ) : !hasDetectedJD ? (
+              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+                JD paste ho chuka hai. Ab <span className="font-semibold">Detect Skills from JD</span> click karo to result generate ho.
+              </div>
             ) : null}
 
-            {hasJdInput ? (
+            {canShowRoleMatchResults ? (
               <>
             <div ref={roleMatchResultsRef} className="mt-5 grid gap-4 md:grid-cols-3">
               <div className="editorial-strip card-lift rounded-xl border border-[var(--border)] p-4">
@@ -3689,6 +3701,16 @@ function ThemeClassSync({ isDark }) {
   return null;
 }
 
+function RouteScrollReset() {
+  const location = useLocation();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [location.pathname]);
+
+  return null;
+}
+
 function App() {
   const [isDark, setIsDark] = useState(() => appState.getTheme());
   const toggleTheme = () => {
@@ -3722,6 +3744,7 @@ function App() {
     <ThemeContext.Provider value={{ isDark, setIsDark, toggleTheme }}>
       <BrowserRouter>
         <ThemeClassSync isDark={isDark} />
+        <RouteScrollReset />
         <div>
           <Routes>
             <Route path="/" element={<LandingPage />} />
