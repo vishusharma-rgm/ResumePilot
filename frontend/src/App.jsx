@@ -882,8 +882,21 @@ function AnalyzePage() {
     const nextFile = file || null;
     const isPdfByType = nextFile?.type === "application/pdf";
     const isPdfByName = /\.pdf$/i.test(nextFile?.name || "");
+    const looksLikeResumeName = /(resume|cv|curriculum|biodata|profile)/i.test(nextFile?.name || "");
     if (nextFile && !isPdfByType && !isPdfByName) {
-      setErrorMessage("Only PDF files are supported. Please upload a .pdf file.");
+      setErrorMessage("No resume found. Please upload your resume in PDF format.");
+      setSelectedFile(null);
+      setFileName("");
+      SESSION_UPLOADED_RESUME_FILE = null;
+      SESSION_UPLOADED_RESUME_NAME = "";
+      return;
+    }
+    if (nextFile && !looksLikeResumeName) {
+      setErrorMessage("No resume found. Please upload a valid resume PDF (example: resume.pdf).");
+      setSelectedFile(null);
+      setFileName("");
+      SESSION_UPLOADED_RESUME_FILE = null;
+      SESSION_UPLOADED_RESUME_NAME = "";
       return;
     }
     setSelectedFile(nextFile);
