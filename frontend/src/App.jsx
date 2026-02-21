@@ -68,6 +68,27 @@ const ThemeContext = createContext({ isDark: false, setIsDark: () => {}, toggleT
 let SESSION_UPLOADED_RESUME_FILE = null;
 let SESSION_UPLOADED_RESUME_NAME = "";
 
+const clearSessionDataOnLoad = () => {
+  try {
+    localStorage.removeItem(ANALYSIS_RESULT_KEY);
+    localStorage.removeItem(ANALYSIS_FALLBACK_KEY);
+    localStorage.removeItem(ANALYSIS_DURATION_KEY);
+    localStorage.removeItem(ANALYSIS_META_KEY);
+    localStorage.removeItem(ANALYSIS_HISTORY_KEY);
+    localStorage.removeItem(SELECTED_ROLE_KEY);
+    localStorage.removeItem(JD_DETECTED_KEY);
+    localStorage.removeItem(CLAIM_RESULT_KEY);
+    localStorage.removeItem(INTERVIEW_RESULT_KEY);
+    localStorage.removeItem("resume_demo_mode");
+  } catch (_error) {
+    // no-op
+  }
+  SESSION_UPLOADED_RESUME_FILE = null;
+  SESSION_UPLOADED_RESUME_NAME = "";
+};
+
+clearSessionDataOnLoad();
+
 const appState = {
   getAnalysisResult() {
     try {
@@ -334,19 +355,22 @@ function LandingPage() {
             initial={{ opacity: 0, y: 26 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.05 }}
-            className="mx-auto max-w-4xl text-5xl font-bold leading-[1.02] tracking-[-0.02em] text-white md:text-7xl"
+            className="landing-hero-title-v2 mx-auto max-w-4xl text-5xl font-bold leading-[1.02] tracking-[-0.02em] md:text-7xl"
           >
-            Get More Interviews with a{" "}
-            <span className="font-serif italic text-emerald-300">
-              Better
-            </span>{" "}
-            Resume.
+            <span className="block text-white">Get More Interviews</span>
+            <span className="landing-hero-typewriter-wrap mt-2 block">
+              <span className="landing-hero-typewriter">
+                <span className="landing-hero-type-white">with a </span>
+                <span className="landing-hero-type-green">Better</span>
+                <span className="landing-hero-type-white"> Resume.</span>
+              </span>
+            </span>
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 26 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.12 }}
-            className="mx-auto mt-6 max-w-2xl text-[15px] leading-relaxed text-stone-300 md:text-[20px] md:leading-[1.42]"
+            className="landing-hero-subtitle-v2 mx-auto mt-6 max-w-2xl text-[15px] leading-relaxed text-stone-300 md:text-[20px] md:leading-[1.42]"
           >
             Optimize your resume with real-time ATS scores, skill match, and expert AI recommendations.
           </motion.p>
@@ -411,8 +435,8 @@ function LandingPage() {
           </div>
         </section>
 
-        <section id="how" ref={howSectionRef} className="relative min-h-screen w-full snap-start overflow-hidden bg-[#101214]">
-          <motion.div style={{ y: bgY }} className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.18),transparent_38%),radial-gradient(circle_at_82%_82%,rgba(255,255,255,0.08),transparent_32%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_30%,transparent_70%,rgba(255,255,255,0.02))]" />
+        <section id="how" ref={howSectionRef} className="landing-section relative min-h-screen w-full snap-start overflow-hidden">
+          <motion.div style={{ y: bgY }} className="landing-ambient pointer-events-none absolute inset-0" />
           <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-12 md:px-10 md:py-16">
             <div className="w-full">
             <motion.div
@@ -464,8 +488,8 @@ function LandingPage() {
           </div>
         </section>
 
-        <section id="features" className="relative min-h-screen w-full snap-start overflow-hidden bg-[#101214]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.18),transparent_38%),radial-gradient(circle_at_82%_82%,rgba(255,255,255,0.08),transparent_32%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_30%,transparent_70%,rgba(255,255,255,0.02))]" />
+        <section id="features" className="landing-section relative min-h-screen w-full snap-start overflow-hidden">
+          <div className="landing-ambient absolute inset-0" />
           <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-14 md:px-10">
             <div className="w-full">
               <motion.p
@@ -510,8 +534,8 @@ function LandingPage() {
           </div>
         </section>
 
-        <section id="what-you-get" className="relative min-h-screen w-full snap-start overflow-hidden bg-[#101214]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.18),transparent_38%),radial-gradient(circle_at_82%_82%,rgba(255,255,255,0.08),transparent_32%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_30%,transparent_70%,rgba(255,255,255,0.02))]" />
+        <section id="what-you-get" className="landing-section relative min-h-screen w-full snap-start overflow-hidden">
+          <div className="landing-ambient absolute inset-0" />
           <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-14 md:px-10">
             <div className="w-full">
               <motion.p
@@ -594,8 +618,8 @@ function LandingPage() {
           </div>
         </section>
 
-        <section className="relative w-full snap-start overflow-hidden bg-[#101214]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.18),transparent_38%),radial-gradient(circle_at_82%_82%,rgba(255,255,255,0.08),transparent_32%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_30%,transparent_70%,rgba(255,255,255,0.02))]" />
+        <section className="landing-section relative w-full snap-start overflow-hidden">
+          <div className="landing-ambient absolute inset-0" />
           <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col px-6 py-14 md:px-10">
             <motion.p
               initial={{ opacity: 0, y: 18 }}
@@ -664,8 +688,8 @@ function LandingPage() {
           </div>
         </section>
 
-        <section id="faq" className="relative h-screen w-full snap-start overflow-hidden bg-[#101214]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.18),transparent_38%),radial-gradient(circle_at_82%_82%,rgba(255,255,255,0.08),transparent_32%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_30%,transparent_70%,rgba(255,255,255,0.02))]" />
+        <section id="faq" className="landing-section relative h-screen w-full snap-start overflow-hidden">
+          <div className="landing-ambient absolute inset-0" />
           <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-14 md:px-10">
             <div className="w-full">
               <motion.p
@@ -737,6 +761,12 @@ function LandingPage() {
 
 function AnalyzePage() {
   const location = useLocation();
+  const ANALYSIS_STEPS = ["Uploading resume", "Processing content", "Scanning skills"];
+  const ANALYSIS_STEP_META = [
+    { key: "upload", label: "Upload", glyph: "↑" },
+    { key: "process", label: "Process", glyph: "◌" },
+    { key: "scan", label: "Scan", glyph: "◎" },
+  ];
   const COMPANY_SHORTLIST_TEMPLATES = [
     { companyId: "code-orbit", companyName: "CodeOrbit", role: "Backend Developer", requiredSkills: ["Node", "Express", "MongoDB", "SQL", "System Design"] },
     { companyId: "pixel-forge", companyName: "PixelForge", role: "Frontend Developer", requiredSkills: ["React", "JavaScript", "TypeScript", "CSS", "REST API"] },
@@ -803,6 +833,7 @@ function AnalyzePage() {
     return appState.getSelectedRole();
   });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisPhase, setAnalysisPhase] = useState(0);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [claimTest, setClaimTest] = useState(null);
@@ -814,13 +845,15 @@ function AnalyzePage() {
   const claimResultRef = useRef(null);
   const claimQuestionsRef = useRef(null);
   const resumeUploadRef = useRef(null);
+  const analysisResultRef = useRef(null);
   const resumeFileInputRef = useRef(null);
   const dragDepthRef = useRef(0);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const storedResult = getStoredAnalysisResult();
-  const activeResult = analysisResult || storedResult;
+  const activeResult = isAnalyzing ? null : (analysisResult || storedResult);
   const hasAnalysis = Boolean(activeResult);
   const selectedRole = selectedDomain || "Backend Developer";
+  const activeResumeFile = selectedFile || SESSION_UPLOADED_RESUME_FILE;
   const requiredSkills = ROLE_SKILL_MAP[selectedRole] || [];
   const extractedSkills = activeResult?.extractedSkills || [];
   const extractedSet = new Set(extractedSkills.map((skill) => String(skill).toLowerCase()));
@@ -937,19 +970,27 @@ function AnalyzePage() {
       return;
     }
 
-    if (!selectedFile) {
+    if (!activeResumeFile) {
       setErrorMessage("Please upload a PDF resume first.");
       return;
     }
 
     setIsAnalyzing(true);
+    setAnalysisPhase(0);
     setErrorMessage("");
     setAnalysisResult(null);
     const startedAt = Date.now();
+    const preAnalyzeMs = 2600 + Math.floor(Math.random() * 1800);
+    const phaseIntervalId = window.setInterval(() => {
+      setAnalysisPhase((prev) => Math.min(prev + 1, ANALYSIS_STEPS.length - 1));
+    }, Math.max(700, Math.floor(preAnalyzeMs / ANALYSIS_STEPS.length)));
+    await new Promise((resolve) => setTimeout(resolve, preAnalyzeMs));
+    window.clearInterval(phaseIntervalId);
+    setAnalysisPhase(ANALYSIS_STEPS.length - 1);
 
     try {
       const formData = new FormData();
-      formData.append("resume", selectedFile);
+      formData.append("resume", activeResumeFile);
       appState.setSelectedRole(selectedDomain);
       const selectedRequiredSkills = ROLE_SKILL_MAP[selectedDomain] || [];
       formData.append("requiredSkills", selectedRequiredSkills.join(","));
@@ -1033,12 +1074,16 @@ function AnalyzePage() {
       });
       setErrorMessage("");
     } finally {
+      setAnalysisPhase(0);
       setIsAnalyzing(false);
+      window.setTimeout(() => {
+        analysisResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 140);
     }
   };
 
   const handleGenerateClaimTest = async () => {
-    if (!selectedFile) {
+    if (!activeResumeFile) {
       setClaimError("Upload a resume to generate the claim verification test.");
       window.alert("Please upload your resume first.");
       if (resumeUploadRef.current) {
@@ -1052,7 +1097,7 @@ function AnalyzePage() {
     setClaimResult(null);
 
     try {
-      const data = await generateClaimTestApi({ file: selectedFile });
+      const data = await generateClaimTestApi({ file: activeResumeFile });
       setClaimTest(data);
       setClaimAnswers({});
     } catch (error) {
@@ -1238,7 +1283,7 @@ function AnalyzePage() {
     <div className="analyze-bg analyze-flat ats-flat min-h-screen">
       <div className="w-full">
         <WorkspaceSidebar />
-        <div className="stagger-auto min-h-screen overflow-x-hidden px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
+        <div className="stagger-auto workspace-content min-h-screen overflow-x-hidden px-4 py-5 md:px-6 md:py-7 lg:ml-[256px] lg:pl-6 lg:pr-8">
         <WorkspaceTopbar />
         <PageExportActions className="mb-4" />
         <motion.h1
@@ -1308,9 +1353,8 @@ function AnalyzePage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.14 }}
           ref={resumeUploadRef}
-          className="glass-panel mt-8 rounded-2xl p-6"
+          className="upload-card glass-panel mt-8 rounded-2xl p-6"
         >
-          <label className="mb-3 block text-sm font-semibold text-slate-700">Upload Resume (PDF)</label>
           <div
             onDragEnter={handleDropzoneDragEnter}
             onDragOver={(e) => {
@@ -1330,13 +1374,43 @@ function AnalyzePage() {
             role="button"
             tabIndex={0}
             aria-label="Upload resume PDF"
-            className={`upload-dropzone relative block cursor-pointer rounded-xl border-2 border-dashed px-4 py-8 text-center transition-all ${
+            className={`upload-dropzone relative flex min-h-[170px] cursor-pointer items-center justify-center rounded-xl border-2 border-dashed px-4 py-3 text-center transition-all ${
               isDraggingFile
                 ? "border-teal-500 bg-teal-50"
                 : "border-slate-300 bg-slate-50 hover:border-teal-400 hover:bg-teal-50/60"
             }`}
           >
-            {!fileName ? (
+            {isAnalyzing ? (
+              <div className="analysis-drop-loader pointer-events-none">
+                <div className="analysis-loader-stage w-full max-w-[360px]">
+                  <div className="analysis-dropzone-mini">
+                    <div className="analysis-file-chip">PDF</div>
+                    <div className="analysis-drop-arrow">↓</div>
+                  </div>
+                  <div className="analysis-stage-track">
+                    {ANALYSIS_STEPS.map((step, idx) => (
+                      <span key={step} className={`analysis-stage-dot ${idx <= analysisPhase ? "is-active" : ""}`} />
+                    ))}
+                  </div>
+                  <p className="mt-3 text-base font-semibold text-slate-900">{ANALYSIS_STEPS[analysisPhase]}</p>
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all duration-500"
+                      style={{ width: `${((analysisPhase + 1) / ANALYSIS_STEPS.length) * 100}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">Uploading • Processing • Scanning</p>
+                  <div className="analysis-phase-icons mt-2">
+                    {ANALYSIS_STEP_META.map((item, idx) => (
+                      <span key={item.key} className={`analysis-phase-pill ${idx <= analysisPhase ? "is-active" : ""}`}>
+                        <span className="analysis-phase-glyph" aria-hidden="true">{item.glyph}</span>
+                        {item.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : !fileName ? (
               <div className="pointer-events-none">
                 <div className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded-full bg-teal-100 text-lg text-teal-700">↑</div>
                 <p className="text-sm font-semibold text-slate-700">Drag & drop resume here</p>
@@ -1376,8 +1450,8 @@ function AnalyzePage() {
             )}
           </button>
         </motion.div>
-
         <motion.div
+          ref={analysisResultRef}
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
@@ -1427,11 +1501,22 @@ function AnalyzePage() {
                   <p className="text-sm font-semibold text-slate-700">{selectedRole}</p>
                 </div>
               </div>
-              <div className="glass-soft rounded-xl p-4">
-                <p className="text-sm font-semibold text-slate-700">Extracted Skills</p>
+              <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-800">Extracted Skills</p>
+                  <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                    {(activeResult?.extractedSkills || []).length} detected
+                  </span>
+                </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {(activeResult?.extractedSkills || []).length ? (activeResult.extractedSkills || []).map((skill) => (
-                    <span key={skill} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                  {(activeResult?.extractedSkills || []).length ? (activeResult.extractedSkills || []).map((skill, index) => (
+                    <span
+                      key={skill}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                    >
+                      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-100 px-1 text-[10px] leading-none text-slate-600">
+                        {index + 1}
+                      </span>
                       {skill}
                     </span>
                   )) : <span className="text-xs text-slate-500">Not available</span>}
@@ -1446,9 +1531,9 @@ function AnalyzePage() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
-          className="mt-6 overflow-hidden border border-slate-300 bg-gradient-to-b from-white to-slate-50/70"
+          className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white"
         >
-          <div className="border-b border-slate-200 bg-[linear-gradient(120deg,rgba(15,23,42,0.03),rgba(15,23,42,0.01))] px-4 py-4 md:px-6 md:py-5">
+          <div className="border-b border-slate-200 bg-slate-50/50 px-4 py-4 md:px-6 md:py-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Proof Test</p>
@@ -1460,7 +1545,7 @@ function AnalyzePage() {
               <button
                 onClick={handleGenerateClaimTest}
                 disabled={isGeneratingClaimTest}
-                className="rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-700"
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-700"
               >
                 {isGeneratingClaimTest ? "Generating..." : "Generate Test"}
               </button>
@@ -1468,7 +1553,7 @@ function AnalyzePage() {
           </div>
 
           <div className="px-4 py-4 md:px-6 md:py-5">
-            {!selectedFile ? (
+            {!activeResumeFile ? (
               <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
                 Upload a resume to generate the claim verification test.
               </p>
@@ -1477,11 +1562,11 @@ function AnalyzePage() {
 
             {claimTest?.questions?.length ? (
               <div className="mt-1">
-                <div className="border border-slate-200 bg-white p-4">
+                <div className="rounded-xl border border-slate-200 bg-white/90 p-4 shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Claimed Skills</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {(claimTest.claimedSkills || []).map((skill) => (
-                      <span key={skill} className="border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                      <span key={skill} className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
                         {skill}
                       </span>
                     ))}
@@ -1489,16 +1574,16 @@ function AnalyzePage() {
                 </div>
               <div ref={claimQuestionsRef} className="mt-4 space-y-4">
                   {claimQuestionGroups.map((group) => (
-                    <div key={group.skill} className="border border-slate-300 bg-white">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 md:px-4">
+                    <div key={group.skill} className="overflow-hidden rounded-xl border border-slate-200 bg-white/90 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-slate-50/70 px-3 py-3 md:px-4">
                         <p className="text-sm font-bold uppercase tracking-[0.1em] text-slate-700">{group.skill} Section</p>
-                        <span className="bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                           {group.questions.length} Questions
                         </span>
                       </div>
                       <div className="space-y-4 px-4 py-4">
                         {group.questions.map((question, questionIndex) => (
-                          <div key={question.id} className="verification-question-card border border-slate-200 bg-slate-50/60 p-4">
+                          <div key={question.id} className="verification-question-card rounded-xl border border-slate-200/90 bg-white/70 p-4 shadow-[0_6px_14px_rgba(15,23,42,0.05)]">
                             <p className="text-base font-semibold text-slate-900">
                               Q{questionIndex + 1}. {question.prompt}
                             </p>
@@ -1506,10 +1591,10 @@ function AnalyzePage() {
                               {(question.options || []).map((option, optionIndex) => (
                                 <label
                                   key={`${question.id}-${optionIndex}`}
-                                  className={`verification-option flex w-full cursor-pointer items-start gap-3 border px-3 py-2 text-sm transition ${
+                                  className={`verification-option flex w-full cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-sm leading-relaxed transition ${
                                     claimAnswers[question.id] === optionIndex
-                                      ? "border-slate-800 bg-slate-100 text-slate-900"
-                                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                      ? "border-teal-500/70 bg-teal-50/80 text-slate-900 shadow-sm"
+                                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50/80"
                                   }`}
                                 >
                                   <input
@@ -1529,12 +1614,12 @@ function AnalyzePage() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-5 flex flex-col items-start justify-between gap-3 border border-slate-300 bg-white px-4 py-3 sm:flex-row sm:items-center">
-                  <p className="text-sm font-medium text-slate-800">click show my result to generate score</p>
+                <div className="mt-5 flex flex-col items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white/90 px-4 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center">
+                  <p className="text-sm font-medium text-slate-800">Click “Show My Result” to generate your score.</p>
                   <button
                     onClick={handleSubmitClaimTest}
                     disabled={isSubmittingClaimTest}
-                    className="rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-700"
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-700"
                   >
                     {isSubmittingClaimTest ? "Submitting..." : "Show My Result"}
                   </button>
@@ -1639,19 +1724,19 @@ function WorkspaceSidebar() {
   const navigate = useNavigate();
   const [lockError, setLockError] = useState("");
   const hasVerificationAccess = Boolean(appState.getClaimResult());
-  const lockedItemClass = `block min-w-max rounded-xl border border-transparent px-3 py-3 text-[15px] font-semibold cursor-not-allowed opacity-75 lg:min-w-0 ${
+  const lockedItemClass = `block min-w-max rounded-lg border px-3 py-2.5 text-[14px] font-medium cursor-not-allowed opacity-75 lg:min-w-0 ${
     isDark ? "text-slate-500" : "text-slate-400"
   }`;
-  const activeClass = "block min-w-max rounded-xl border px-3 py-3 text-[15px] font-semibold transition-all lg:min-w-0";
+  const activeClass = "block min-w-max rounded-lg border px-3 py-2.5 text-[14px] font-medium transition-colors lg:min-w-0";
   const navClass = ({ isActive }) =>
     `${activeClass} ${
       isActive
         ? (isDark
-          ? "border-slate-600 bg-slate-800/80 text-slate-100 shadow-[inset_0_1px_0_rgba(148,163,184,0.25),0_6px_14px_rgba(2,6,23,0.35)]"
-          : "border-slate-300 bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_6px_14px_rgba(15,23,42,0.12)]")
+          ? "border-slate-500 bg-slate-800/75 text-slate-100"
+          : "border-slate-300 bg-white text-slate-900")
         : (isDark
-          ? "border-transparent text-slate-300 hover:-translate-y-[1px] hover:border-slate-600 hover:bg-slate-800/65 hover:text-slate-100 hover:shadow-[inset_0_1px_0_rgba(148,163,184,0.2),0_6px_12px_rgba(2,6,23,0.28)]"
-          : "border-transparent text-slate-600 hover:-translate-y-[1px] hover:border-slate-200 hover:bg-white/80 hover:text-slate-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_12px_rgba(15,23,42,0.1)]")
+          ? "border-slate-700/60 text-slate-300 hover:border-slate-500 hover:bg-slate-800/50 hover:text-slate-100"
+          : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-white hover:text-slate-800")
     }`;
   const handleLockedClick = () => {
     const message = "Please complete the Resume Verification Test first.";
@@ -1661,14 +1746,13 @@ function WorkspaceSidebar() {
   };
 
   return (
-    <aside className={`no-print top-0 z-30 border-b px-3 py-3 backdrop-blur shadow-[0_8px_18px_rgba(15,23,42,0.1)] lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:w-[280px] lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-4 lg:py-8 lg:shadow-[10px_0_32px_rgba(15,23,42,0.16)] ${
+    <aside className={`no-print top-0 z-30 border-b px-3 py-3 backdrop-blur lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:w-[256px] lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-6 ${
       isDark
-        ? "border-slate-700/80 bg-[linear-gradient(180deg,rgba(30,41,59,0.94),rgba(2,6,23,0.98))] [box-shadow:inset_0_1px_0_rgba(148,163,184,0.24),inset_0_-1px_0_rgba(15,23,42,0.75),10px_0_32px_rgba(2,6,23,0.5)]"
-        : "border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(241,245,249,0.94))] [box-shadow:inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(148,163,184,0.2),10px_0_32px_rgba(15,23,42,0.14)]"
+        ? "border-slate-700/80 bg-slate-900/95"
+        : "border-slate-200/90 bg-slate-50/95"
     }`}>
-      <p className={`mb-2 hidden text-[11px] font-bold uppercase tracking-[0.16em] lg:block ${isDark ? "text-slate-400" : "text-slate-500"}`}>comand center</p>
-      <div className="mb-0 lg:mb-5" />
-      <div className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-2 lg:overflow-visible lg:pb-0">
+      <p className={`mb-3 hidden text-[11px] font-semibold uppercase tracking-[0.14em] lg:block ${isDark ? "text-slate-400" : "text-slate-500"}`}>Command Center</p>
+      <div className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-1.5 lg:overflow-visible lg:pb-0">
         <NavLink to="/analyze" className={navClass}>
           Analyze
         </NavLink>
@@ -1694,7 +1778,7 @@ function WorkspaceSidebar() {
           </>
         )}
         {lockError ? (
-          <p className={`mt-2 px-3 py-2 text-xs font-medium ${
+          <p className={`mt-2 rounded-md px-3 py-2 text-xs font-medium ${
             isDark
               ? "border border-amber-500/30 bg-amber-500/10 text-amber-200"
               : "border border-amber-200 bg-amber-50 text-amber-800"
@@ -1801,7 +1885,7 @@ function AtsCheckerPage() {
     <div className="analyze-bg analyze-flat ats-flat min-h-screen">
       <div className="w-full">
         <WorkspaceSidebar />
-        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
+        <div className="stagger-auto workspace-content min-h-screen px-4 py-5 md:px-6 md:py-7 lg:ml-[256px] lg:pl-6 lg:pr-8">
           <WorkspaceTopbar />
           <PageExportActions className="mb-4" />
           <div>
@@ -2200,7 +2284,7 @@ function RoleMatchPage() {
     <div className="analyze-bg analyze-flat ats-flat min-h-screen">
       <div className="w-full">
         <WorkspaceSidebar />
-        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
+        <div className="stagger-auto workspace-content min-h-screen px-4 py-5 md:px-6 md:py-7 lg:ml-[256px] lg:pl-6 lg:pr-8">
           <WorkspaceTopbar />
           <PageExportActions className="mb-4" />
           <div>
@@ -2505,11 +2589,11 @@ function MissingSkillsPage() {
     <div className="analyze-bg analyze-flat ats-flat min-h-screen">
       <div className="w-full">
         <WorkspaceSidebar />
-        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
+        <div className="stagger-auto workspace-content min-h-screen px-4 py-5 md:px-6 md:py-7 lg:ml-[256px] lg:pl-6 lg:pr-8">
           <WorkspaceTopbar />
           <PageExportActions className="mb-4" />
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="py-1">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h1 className="text-3xl font-bold text-slate-900">Missing Skills</h1>
@@ -2745,7 +2829,7 @@ function IcmScorePage() {
     <div className="analyze-bg analyze-flat ats-flat min-h-screen">
       <div className="w-full">
         <WorkspaceSidebar />
-        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
+        <div className="stagger-auto workspace-content min-h-screen px-4 py-5 md:px-6 md:py-7 lg:ml-[256px] lg:pl-6 lg:pr-8">
           <WorkspaceTopbar />
           <PageExportActions className="mb-4" />
           <div>
@@ -3019,7 +3103,7 @@ function ApplicationReadinessPage() {
     <div className="analyze-bg analyze-flat ats-flat min-h-screen">
       <div className="w-full">
         <WorkspaceSidebar />
-        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
+        <div className="stagger-auto workspace-content min-h-screen px-4 py-5 md:px-6 md:py-7 lg:ml-[256px] lg:pl-6 lg:pr-8">
           <WorkspaceTopbar />
           <PageExportActions className="mb-4" />
           <div className="mb-6">
@@ -3146,7 +3230,7 @@ function InterviewLoopPage() {
     <div className="analyze-bg analyze-flat ats-flat min-h-screen">
       <div className="w-full">
         <WorkspaceSidebar />
-        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
+        <div className="stagger-auto workspace-content min-h-screen px-4 py-5 md:px-6 md:py-7 lg:ml-[256px] lg:pl-6 lg:pr-8">
           <WorkspaceTopbar />
           <PageExportActions className="mb-4" />
           <div className="mb-6">
@@ -3364,7 +3448,7 @@ function RoadmapBuilderPage() {
     <div className="analyze-bg analyze-flat ats-flat min-h-screen">
       <div className="w-full">
         <WorkspaceSidebar />
-        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
+        <div className="stagger-auto workspace-content min-h-screen px-4 py-5 md:px-6 md:py-7 lg:ml-[256px] lg:pl-6 lg:pr-8">
           <WorkspaceTopbar />
           <PageExportActions className="mb-4" />
           <div className="mb-6">

@@ -95,9 +95,11 @@ function PremiumLanding({ onRunDemo, onClear }) {
           <h1 className="reveal text-5xl font-bold tracking-tight text-white md:text-[112px] md:leading-[1.04]">
             Your Resume. Upgraded.
           </h1>
-          <p className="reveal mx-auto mt-7 max-w-4xl text-lg leading-relaxed text-stone-200 md:text-[56px] md:leading-[1.35]">
-            Optimize your resume with real-time ATS scores, skill match, and expert AI recommendations.
-          </p>
+          <div className="reveal mx-auto mt-7 max-w-5xl rounded-3xl border border-white/20 bg-white/10 px-6 py-5 backdrop-blur-sm md:px-10 md:py-8">
+            <p className="text-lg leading-relaxed text-stone-100 md:text-[56px] md:leading-[1.35]">
+              Optimize your resume with real-time ATS scores, skill match, and expert AI recommendations.
+            </p>
+          </div>
 
           <div className="reveal mt-12">
             <Button
@@ -110,9 +112,11 @@ function PremiumLanding({ onRunDemo, onClear }) {
             </Button>
           </div>
 
-          <p className="reveal mt-10 text-sm font-semibold text-stone-300 md:text-[43px]">
-            Used by 5,000+ job seekers <span className="ml-2 font-bold text-white">stripe</span>
-          </p>
+          <div className="reveal mx-auto mt-10 inline-flex items-center rounded-full border border-white/20 bg-black/25 px-5 py-2 md:px-8 md:py-3">
+            <p className="text-sm font-semibold text-stone-200 md:text-[43px]">
+              Used by 5,000+ job seekers <span className="ml-2 font-bold text-white">stripe</span>
+            </p>
+          </div>
 
           <button
             onClick={onRunDemo}
