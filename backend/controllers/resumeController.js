@@ -3,7 +3,7 @@ const AnalysisResult = require("../models/AnalysisResult");
 const mongoose = require("mongoose");
 const { extractTextFromPdf } = require("../services/resumeParser");
 const { parseLinkedInLikeProfile } = require("../services/linkedinParser");
-const { analyzeResumeWithAI } = require("../services/openaiService");
+const { analyzeResumeWithAI, generateProjectBlueprintWithAI } = require("../services/openaiService");
 const { computeSkillMatch } = require("../services/skillMatcher");
 const { calculateScore } = require("../utils/scoringUtils");
 const CandidateAssessment = require("../models/CandidateAssessment");
@@ -11,6 +11,8 @@ const {
   COMPANY_TEMPLATES,
   createResumeClaimTest,
   evaluateResumeClaimTest,
+  createInterviewSimulation,
+  evaluateInterviewSimulation,
 } = require("../services/assessmentService");
 
 const analyzeResume = async (req, res) => {
@@ -211,9 +213,80 @@ const submitClaimTest = async (req, res) => {
   }
 };
 
+const startInterviewSimulation = async (req, res) => {
+  try {
+    const companyId = String(req.body.companyId || "").trim().toLowerCase();
+    const resumeSkills = Array.isArray(req.body.resumeSkills) ? req.body.resumeSkills : [];
+    const simulation = createInterviewSimulation({ companyId, resumeSkills });
+    return res.status(200).json({
+      message: "Interview simulation started.",
+      availableCompanies: COMPANY_TEMPLATES.map((company) => ({
+        companyId: company.companyId,
+        companyName: company.companyName,
+        role: company.role,
+      })),
+      ...simulation,
+    });
+  } catch (error) {
+    console.error("Interview simulation start failed:", error);
+    return res.status(500).json({
+      error: "Interview simulation start failed.",
+      details: error.message,
+    });
+  }
+};
+
+const submitInterviewSimulation = async (req, res) => {
+  try {
+    const sessionId = String(req.body.sessionId || "").trim();
+    const answers = Array.isArray(req.body.answers) ? req.body.answers : [];
+    if (!sessionId) {
+      return res.status(400).json({ error: "sessionId is required." });
+    }
+    const result = evaluateInterviewSimulation({ sessionId, answers });
+    return res.status(200).json({
+      message: "Interview simulation evaluated successfully.",
+      ...result,
+    });
+  } catch (error) {
+    console.error("Interview simulation submission failed:", error);
+    return res.status(500).json({
+      error: "Interview simulation submission failed.",
+      details: error.message,
+    });
+  }
+};
+
+const generateProjectPlan = async (req, res) => {
+  try {
+    const role = String(req.body.role || "").trim() || "Backend Developer";
+    const missingSkills = Array.isArray(req.body.missingSkills) ? req.body.missingSkills : [];
+    const extractedSkills = Array.isArray(req.body.extractedSkills) ? req.body.extractedSkills : [];
+    const blueprint = await generateProjectBlueprintWithAI({
+      role,
+      missingSkills,
+      extractedSkills,
+    });
+    return res.status(200).json({
+      message: "Project blueprint generated successfully.",
+      role,
+      blueprint,
+    });
+  } catch (error) {
+    console.error("Project blueprint generation failed:", error);
+    return res.status(500).json({
+      error: "Project blueprint generation failed.",
+      details: error.message,
+    });
+  }
+};
+
 module.exports = {
   analyzeResume,
   parseLinkedInProfile,
   generateClaimTest,
   submitClaimTest,
+  startInterviewSimulation,
+  submitInterviewSimulation,
+  generateProjectPlan,
 };

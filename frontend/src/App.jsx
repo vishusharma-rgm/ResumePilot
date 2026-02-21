@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { motion, useMotionValueEvent, useScroll, useTransform } from "framer-motion";
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { computeWeightedScore, formatAnalysisDuration } from "./lib/scoring";
 import { generateClaimTestApi, submitClaimTestApi } from "./services/api";
@@ -34,6 +34,26 @@ const ROLE_SKILL_MAP = {
   "Full Stack Developer": ["React", "TypeScript", "Node", "Express", "MongoDB", "SQL", "REST API", "System Design"],
 };
 
+const getScoreTextClass = (score, goodThreshold = 49) => (
+  Number(score) >= goodThreshold ? "text-emerald-700" : "text-rose-700"
+);
+
+const getScoreBarClass = (score, goodThreshold = 49) => (
+  Number(score) >= goodThreshold
+    ? "bg-gradient-to-r from-emerald-500 to-teal-500"
+    : "bg-gradient-to-r from-rose-500 to-red-500"
+);
+
+const getInverseScoreTextClass = (score, badThreshold = 49) => (
+  Number(score) >= badThreshold ? "text-rose-700" : "text-emerald-700"
+);
+
+const getInverseScoreBarClass = (score, badThreshold = 49) => (
+  Number(score) >= badThreshold
+    ? "bg-gradient-to-r from-rose-500 to-red-500"
+    : "bg-gradient-to-r from-emerald-500 to-teal-500"
+);
+
 const ANALYSIS_RESULT_KEY = "resume_analysis_result";
 const ANALYSIS_FALLBACK_KEY = "resume_analysis_fallback";
 const ANALYSIS_DURATION_KEY = "resume_last_analysis_duration_ms";
@@ -42,7 +62,11 @@ const ANALYSIS_HISTORY_KEY = "resume_analysis_history";
 const SELECTED_ROLE_KEY = "resume_selected_role";
 const THEME_KEY = "resume_theme";
 const JD_DETECTED_KEY = "resume_jd_detected";
+const CLAIM_RESULT_KEY = "resume_claim_result";
+const INTERVIEW_RESULT_KEY = "resume_interview_result";
 const ThemeContext = createContext({ isDark: false, setIsDark: () => {}, toggleTheme: () => {} });
+let SESSION_UPLOADED_RESUME_FILE = null;
+let SESSION_UPLOADED_RESUME_NAME = "";
 
 const appState = {
   getAnalysisResult() {
@@ -130,6 +154,34 @@ const appState = {
   isJdDetected() {
     return localStorage.getItem(JD_DETECTED_KEY) === "true";
   },
+  getClaimResult() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(CLAIM_RESULT_KEY) || "null");
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (_error) {
+      return null;
+    }
+  },
+  setClaimResult(value) {
+    localStorage.setItem(CLAIM_RESULT_KEY, JSON.stringify(value));
+  },
+  clearClaimResult() {
+    localStorage.removeItem(CLAIM_RESULT_KEY);
+  },
+  getInterviewResult() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(INTERVIEW_RESULT_KEY) || "null");
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (_error) {
+      return null;
+    }
+  },
+  setInterviewResult(value) {
+    localStorage.setItem(INTERVIEW_RESULT_KEY, JSON.stringify(value));
+  },
+  clearInterviewResult() {
+    localStorage.removeItem(INTERVIEW_RESULT_KEY);
+  },
 };
 
 const getStoredAnalysisResult = () => {
@@ -139,12 +191,11 @@ const getStoredAnalysisResult = () => {
 const clearStoredAnalysisResult = () => {
   try {
     appState.clearAnalysisResult();
+    appState.clearClaimResult();
+    appState.clearInterviewResult();
   } catch (_error) {
     // no-op
-  } 
-  
-  
-
+  }
 };
 
 const exportJsonFile = (fileName, payload) => {
@@ -190,7 +241,7 @@ function LiquidNavbar() {
       <nav className="liquid-nav mx-auto flex w-full max-w-6xl items-center justify-between rounded-2xl px-5 py-3">
         <span className="liquid-shine" />
         <Link to="/" className="text-lg font-bold tracking-tight text-slate-900">
-          ResumeIQ
+          ResumePilot
         </Link>
         <div className="hidden items-center gap-7 text-sm font-medium text-slate-700 md:flex">
           <a href="#overview" className="hover:text-[var(--primary)]">Overview</a>
@@ -211,6 +262,17 @@ function LiquidNavbar() {
 
 function LandingPage() {
   const navigate = useNavigate();
+  const howSectionRef = useRef(null);
+  const [showStickyCta, setShowStickyCta] = useState(false);
+  const { scrollYProgress } = useScroll({
+    target: howSectionRef,
+    offset: ["start end", "end start"],
+  });
+  const progressHeight = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
+  const bgY = useTransform(scrollYProgress, [0, 1], ["0%", "16%"]);
+  useMotionValueEvent(scrollYProgress, "change", (latest) => {
+    setShowStickyCta(latest > 0.12);
+  });
   const runLandingDemo = () => {
     const demo = getDemoAnalysisResult();
     appState.setAnalysisResult(demo);
@@ -231,60 +293,442 @@ function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-main)]">
-      <LiquidNavbar />
-      <main className="mx-auto flex min-h-[calc(100vh-108px)] w-full max-w-6xl items-center px-6 py-8">
-        <section id="overview" className="w-full">
-          <motion.div
-            initial="hidden"
-            animate="show"
-            variants={fadeUp}
-            transition={{ duration: 0.55 }}
-            className="mx-auto max-w-4xl text-center"
+    <div className="relative min-h-screen snap-y snap-mandatory overflow-y-auto bg-[#111111] text-white [background:radial-gradient(circle_at_50%_-12%,#2f2f2f_0%,#171717_42%,#111111_70%)]">
+      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_12%_18%,rgba(16,185,129,0.14),transparent_34%),radial-gradient(circle_at_88%_22%,rgba(255,255,255,0.07),transparent_28%),radial-gradient(circle_at_52%_84%,rgba(20,184,166,0.07),transparent_30%)]" />
+      <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.08] [background-image:linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] [background-size:44px_44px]" />
+      {showStickyCta ? (
+        <Link
+          to="/analyze"
+          onClick={clearStoredAnalysisResult}
+          className="fixed right-6 top-5 z-50 rounded-xl bg-[#f5f5f4] px-4 py-2 text-sm font-semibold text-[#111827] shadow-lg transition hover:bg-[#e7e5e4]"
+        >
+          Analyze Now
+        </Link>
+      ) : null}
+      <main className="relative z-10 w-full pb-0 pt-8">
+        <motion.div
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45 }}
+          className="absolute left-6 top-6 z-30 flex items-center gap-2"
+        >
+          <span className="inline-flex h-6 w-5 items-center justify-center rounded-sm border border-stone-400/80 bg-stone-100 text-[10px] font-bold text-stone-900 shadow-sm">
+            ▤
+          </span>
+          <span className="block text-lg font-semibold tracking-tight text-white md:text-xl">ResumePilot</span>
+        </motion.div>
+        <motion.nav
+          initial={{ opacity: 0, y: -18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="premium-nav hidden items-center justify-center gap-16 text-base font-semibold text-stone-100 md:flex md:text-lg"
+        >
+          <a href="#how">How It Works</a>
+          <a href="#what-you-get">What You Get</a>
+          <a href="#features">Features</a>
+          <a href="#faq">FAQ</a>
+        </motion.nav>
+        <section className="relative mx-auto mt-0 flex min-h-screen max-w-5xl snap-start items-center px-6 text-center">
+          <div className="w-full">
+          <motion.h1
+            initial={{ opacity: 0, y: 26 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.05 }}
+            className="mx-auto max-w-4xl text-5xl font-bold leading-[1.02] tracking-[-0.02em] text-white md:text-7xl"
           >
-            <h1 className="hero-title text-4xl font-bold leading-tight md:text-6xl">
-              Build a job-ready resume with precise skill-gap insights.
-            </h1>
-            <p className="mx-auto mt-5 max-w-2xl text-lg text-[var(--muted)]">
-              Professional analysis, role-fit score, and clear suggestions designed for students and working professionals.
-            </p>
-
-            <div className="mt-7 flex flex-wrap justify-center gap-3">
-              <Link
-                to="/analyze"
-                onClick={clearStoredAnalysisResult}
-                className="cta-pulse rounded-lg bg-[var(--primary)] px-7 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[1.03] hover:bg-[var(--primary-dark)] hover:shadow-lg hover:shadow-teal-200/80"
+            Get More Interviews with a{" "}
+            <span className="font-serif italic text-emerald-300">
+              Better
+            </span>{" "}
+            Resume.
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0, y: 26 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.12 }}
+            className="mx-auto mt-6 max-w-2xl text-[15px] leading-relaxed text-stone-300 md:text-[20px] md:leading-[1.42]"
+          >
+            Optimize your resume with real-time ATS scores, skill match, and expert AI recommendations.
+          </motion.p>
+          <motion.div
+            initial={{ opacity: 0, y: 26 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="mt-9 flex flex-wrap items-center justify-center gap-3"
+          >
+            <Link
+              to="/analyze"
+              onClick={clearStoredAnalysisResult}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#f5f5f4] px-8 py-3 text-base font-semibold text-[#111827] shadow-[0_12px_30px_rgba(255,255,255,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#e7e5e4] hover:shadow-[0_16px_36px_rgba(255,255,255,0.26)] md:px-10 md:py-4 md:text-lg"
+            >
+              Analyze My Resume <span aria-hidden>→</span>
+            </Link>
+            <a
+              href="#how"
+              className="inline-flex items-center gap-2 rounded-xl border border-stone-600/90 bg-stone-900/65 px-8 py-3 text-base font-semibold text-stone-200 transition-all duration-200 hover:border-stone-400 hover:bg-stone-800/75 hover:text-white md:px-10 md:py-4 md:text-lg"
+            >
+              View Workflow
+            </a>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 22 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.28 }}
+            className="relative left-1/2 mt-10 w-screen -translate-x-1/2"
+          >
+            <div className="relative overflow-hidden border-y border-stone-700/70 bg-gradient-to-r from-[#0b0b0c] via-[#111112] to-[#0b0b0c] py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(255,255,255,0.06),0_12px_28px_rgba(0,0,0,0.35)]">
+              <div className="pointer-events-none absolute inset-y-0 left-0 w-28 bg-gradient-to-r from-black/55 to-transparent" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-28 bg-gradient-to-l from-black/55 to-transparent" />
+              <motion.div
+                animate={{ x: ["0%", "-50%"] }}
+                transition={{ duration: 24, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
+                className="flex w-[200%] items-center gap-16 whitespace-nowrap"
               >
-                Start Now
-              </Link>
-              <button
-                onClick={runLandingDemo}
-                className="rounded-lg border border-[var(--border)] bg-white px-7 py-3 text-sm font-semibold text-slate-700 transition-all hover:scale-[1.03] hover:bg-slate-50"
-              >
-                Run Demo
-              </button>
+                {Array.from({ length: 2 }).map((_, setIdx) => (
+                  <div key={`set-${setIdx}`} className="flex items-center gap-16 pr-16">
+                    {[
+                      "ATS CHECKER",
+                      "ROLE MATCH",
+                      "MISSING SKILLS",
+                      "INTERVIEW SIM",
+                      "PROJECT PLAN",
+                      "READINESS SCORE",
+                      "APPLICATION READINESS",
+                      "INTERVIEW LOOP",
+                    ].map((label, idx) => (
+                      <div key={`${setIdx}-${label}`} className="flex items-center gap-16">
+                        <span className="text-[13px] font-bold tracking-[0.2em] text-[#d6d0c4] md:text-lg">
+                          {label}
+                        </span>
+                        {idx < 7 ? <span className="text-stone-500">◆</span> : null}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </motion.div>
             </div>
-            <div id="highlights" className="mt-8 grid gap-4 md:grid-cols-3">
-              {metrics.map((item) => (
+          </motion.div>
+          </div>
+        </section>
+
+        <section id="how" ref={howSectionRef} className="relative min-h-screen w-full snap-start overflow-hidden bg-[#101214]">
+          <motion.div style={{ y: bgY }} className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.18),transparent_38%),radial-gradient(circle_at_82%_82%,rgba(255,255,255,0.08),transparent_32%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_30%,transparent_70%,rgba(255,255,255,0.02))]" />
+          <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-12 md:px-10 md:py-16">
+            <div className="w-full">
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.55 }}
+              className="text-center"
+            >
+              <p className="premium-kicker inline-flex rounded-full border border-emerald-400/45 bg-slate-500/12 px-4 py-1 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300">
+                How It Works
+              </p>
+              <h2 className="premium-section-title mt-3 text-3xl font-bold tracking-tight text-white md:text-6xl">From Upload to Interview-Ready</h2>
+              <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-stone-300 md:text-lg">
+                Scroll down and follow the exact workflow we use to turn a basic resume into a shortlist-ready profile.
+              </p>
+            </motion.div>
+
+            <div className="relative mt-12 md:mt-16">
+              <div className="absolute left-[17px] top-0 h-full w-[2px] rounded-full bg-stone-800 md:left-1/2 md:-ml-[1px]" />
+              <motion.div style={{ height: progressHeight }} className="absolute left-[17px] top-0 w-[2px] rounded-full bg-emerald-400 md:left-1/2 md:-ml-[1px]" />
+
+              <div className="space-y-7 md:space-y-10">
+                {[
+                  { step: "01", title: "Upload Resume", desc: "Drop your resume. We instantly parse sections, projects, and skill claims." },
+                  { step: "02", title: "Run ATS + Match Scan", desc: "Get ATS score, role alignment, and missing keyword insights in one pass." },
+                  { step: "03", title: "Apply Priority Fixes", desc: "Use targeted AI recommendations to improve relevance and interview chances." },
+                ].map((item, index) => (
+                  <motion.div
+                    key={item.step}
+                    initial={{ opacity: 0, y: 24 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, amount: 0.4 }}
+                    transition={{ duration: 0.5, delay: index * 0.06 }}
+                    className={`relative flex items-start gap-4 md:gap-6 ${index % 2 === 0 ? "md:justify-start" : "md:justify-end"}`}
+                  >
+                    <span className="relative z-10 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-400/60 bg-[#0f1613] text-xs font-bold text-emerald-300 md:absolute md:left-1/2 md:top-6 md:-ml-[18px]">
+                      {item.step}
+                    </span>
+                    <div className={`ml-0 w-full rounded-2xl border border-stone-700/80 bg-stone-900/70 p-5 backdrop-blur md:w-[44%] ${index % 2 === 0 ? "md:mr-auto md:ml-0" : "md:ml-auto md:mr-0"}`}>
+                      <h3 className="text-2xl font-semibold text-white">{item.title}</h3>
+                      <p className="mt-2 text-base leading-relaxed text-stone-300">{item.desc}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="features" className="relative min-h-screen w-full snap-start overflow-hidden bg-[#101214]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.18),transparent_38%),radial-gradient(circle_at_82%_82%,rgba(255,255,255,0.08),transparent_32%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_30%,transparent_70%,rgba(255,255,255,0.02))]" />
+          <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-14 md:px-10">
+            <div className="w-full">
+              <motion.p
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.45 }}
+                className="premium-kicker inline-flex rounded-full border border-emerald-400/45 bg-slate-500/12 px-4 py-1 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300"
+              >
+                Features
+              </motion.p>
+              <motion.h2
+                initial={{ opacity: 0, y: 22 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.55 }}
+                className="premium-section-title mt-3 max-w-4xl text-3xl font-bold leading-[1.08] tracking-tight text-white md:text-6xl"
+              >
+                Built to improve shortlist chances, not just look good.
+              </motion.h2>
+              <div className="mt-10 grid gap-4 md:grid-cols-2">
+                {[
+                  { title: "Section-Level Resume Scan", desc: "Analyze summary, experience, projects, and skills with focused ATS-readability checks." },
+                  { title: "Role Alignment Engine", desc: "Compare your profile against target role expectations and expose high-impact mismatches." },
+                  { title: "Missing Keyword Detection", desc: "Find absent domain terms and recruiter-relevant phrases that affect filtering." },
+                  { title: "Actionable Rewrite Guidance", desc: "Get concrete suggestion lines you can directly apply to improve clarity and impact." },
+                ].map((item, index) => (
+                  <motion.div
+                    key={item.title}
+                    initial={{ opacity: 0, y: 18 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, amount: 0.3 }}
+                    transition={{ duration: 0.45, delay: index * 0.05 }}
+                    className="rounded-2xl border border-stone-700/75 bg-stone-900/60 p-5"
+                  >
+                    <p className="text-2xl font-semibold text-white">{item.title}</p>
+                    <p className="mt-2 text-base leading-relaxed text-stone-300">{item.desc}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="what-you-get" className="relative min-h-screen w-full snap-start overflow-hidden bg-[#101214]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.18),transparent_38%),radial-gradient(circle_at_82%_82%,rgba(255,255,255,0.08),transparent_32%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_30%,transparent_70%,rgba(255,255,255,0.02))]" />
+          <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-14 md:px-10">
+            <div className="w-full">
+              <motion.p
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.45 }}
+                className="premium-kicker inline-flex rounded-full border border-emerald-400/45 bg-slate-500/12 px-4 py-1 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300"
+              >
+                What You Get
+              </motion.p>
+              <motion.h2
+                initial={{ opacity: 0, y: 22 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.55 }}
+                className="premium-section-title mt-3 max-w-4xl text-3xl font-bold leading-[1.08] tracking-tight text-white md:text-6xl"
+              >
+                Everything you need to improve your resume with clarity.
+              </motion.h2>
+              <motion.p
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: 0.06 }}
+                className="mt-4 max-w-3xl text-base leading-relaxed text-stone-300 md:text-lg"
+              >
+                Get a complete analysis pipeline: score diagnostics, role fit clarity, and practical edits that improve shortlist potential.
+              </motion.p>
+
+              <div className="mt-10 space-y-3">
+                {[
+                  {
+                    title: "ATS Score Breakdown",
+                    desc: "Section-wise readability, structure flags, and keyword fit insights so you know what blocks screening.",
+                    meta: "Format + Keywords",
+                  },
+                  {
+                    title: "Skill Gap Mapping",
+                    desc: "Clear matched vs missing skills against your target role with focus on high-impact gaps first.",
+                    meta: "Role-Specific",
+                  },
+                  {
+                    title: "AI Action Plan",
+                    desc: "Priority recommendations with concrete bullet-level changes you can apply right away.",
+                    meta: "Actionable Fixes",
+                  },
+                ].map((item, index) => (
+                  <motion.div
+                    key={item.title}
+                    initial={{ opacity: 0, y: 22 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, amount: 0.3 }}
+                    transition={{ duration: 0.45, delay: index * 0.05 }}
+                    className="relative overflow-hidden border border-stone-700/75 bg-stone-900/60 px-5 py-5 md:px-6"
+                  >
+                    <span className="absolute inset-y-0 left-0 w-1.5 bg-emerald-400/80" />
+                    <div className="pl-3 md:flex md:items-start md:justify-between md:gap-8">
+                      <div className="md:max-w-[68%]">
+                        <p className="text-2xl font-semibold text-white md:text-3xl">{item.title}</p>
+                        <p className="mt-1 text-base leading-relaxed text-stone-300 md:text-lg">{item.desc}</p>
+                      </div>
+                      <p className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] text-emerald-300 md:mt-1 md:text-sm">
+                        {item.meta}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.45, delay: 0.15 }}
+                className="mt-8 inline-flex items-center gap-2 rounded-full border border-stone-600/80 bg-stone-900/60 px-4 py-1.5 text-sm font-semibold text-stone-200"
+              >
+                Output includes score summary, missing keywords, and prioritized recommendations.
+              </motion.div>
+            </div>
+          </div>
+        </section>
+
+        <section className="relative w-full snap-start overflow-hidden bg-[#101214]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.18),transparent_38%),radial-gradient(circle_at_82%_82%,rgba(255,255,255,0.08),transparent_32%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_30%,transparent_70%,rgba(255,255,255,0.02))]" />
+          <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col px-6 py-14 md:px-10">
+            <motion.p
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.45 }}
+              className="premium-kicker inline-flex rounded-full border border-emerald-400/45 bg-slate-500/12 px-4 py-1 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300"
+            >
+              Problem to Overcome
+            </motion.p>
+            <motion.h2
+              initial={{ opacity: 0, y: 22 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.55 }}
+              className="premium-section-title mt-3 max-w-4xl text-3xl font-bold leading-[1.08] tracking-tight text-white md:text-6xl"
+            >
+              Turn unclear resumes into interview-ready profiles.
+            </motion.h2>
+
+            <div className="mt-10 space-y-5 md:space-y-6">
+              {[
+                {
+                  title: "Problem",
+                  text: "Applications get ignored because the resume lacks ATS keywords, clear impact, and role alignment.",
+                },
+                {
+                  title: "Optimization",
+                  text: "ResumePilot scans structure and skill gaps, then gives prioritized fixes that improve relevance fast.",
+                },
+                {
+                  title: "Outcome",
+                  text: "You apply with a stronger resume that reads clearly to recruiters and performs better in shortlisting.",
+                },
+              ].map((item, index) => (
                 <motion.div
                   key={item.title}
-                  initial="hidden"
-                  whileInView="show"
-                  viewport={{ once: true }}
-                  variants={fadeUp}
-                  className="rounded-2xl border border-slate-200 bg-white/85 p-6 text-center shadow-md backdrop-blur"
+                  initial={{ opacity: 0, y: 24 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, amount: 0.35 }}
+                  transition={{ duration: 0.5, delay: index * 0.06 }}
+                  className="relative overflow-hidden border border-stone-700/70 bg-stone-900/55 px-5 py-6 md:px-7"
                 >
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">{item.title}</p>
-                  <p className="mt-2 text-3xl font-bold text-[var(--primary)]">{item.value}</p>
-                  <p className="mt-2 text-sm text-[var(--muted)]">{item.description}</p>
+                  <span className="absolute inset-y-0 left-0 w-1.5 bg-emerald-400/85" />
+                  <p className="premium-kicker-strong pl-2 text-xs font-bold uppercase tracking-[0.14em] text-emerald-300">{item.title}</p>
+                  <p className="mt-2 max-w-4xl pl-2 text-base leading-relaxed text-stone-200 md:text-xl md:leading-[1.45]">{item.text}</p>
                 </motion.div>
               ))}
             </div>
-            <div className="mt-6 h-px w-full bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-            <p className="mt-4 text-center text-xs text-slate-500">
-              ResumeIQ workspace is tuned for demo-ready scoring, role matching, and actionable skill-gap planning.
-            </p>
-          </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.12 }}
+              className="mt-12"
+            >
+              <Link
+                to="/analyze"
+                onClick={clearStoredAnalysisResult}
+                className="inline-flex items-center gap-2 rounded-full border border-stone-600 bg-stone-900/70 px-5 py-2 text-sm font-semibold text-white transition hover:border-emerald-400 hover:text-emerald-300 md:text-base"
+              >
+                Start your resume transformation →
+              </Link>
+            </motion.div>
+          </div>
+        </section>
+
+        <section id="faq" className="relative h-screen w-full snap-start overflow-hidden bg-[#101214]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.18),transparent_38%),radial-gradient(circle_at_82%_82%,rgba(255,255,255,0.08),transparent_32%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_30%,transparent_70%,rgba(255,255,255,0.02))]" />
+          <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-14 md:px-10">
+            <div className="w-full">
+              <motion.p
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.45 }}
+                className="premium-kicker inline-flex rounded-full border border-emerald-400/45 bg-slate-500/12 px-4 py-1 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300"
+              >
+                FAQ
+              </motion.p>
+              <motion.h2
+                initial={{ opacity: 0, y: 22 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.55 }}
+                className="premium-section-title mt-3 max-w-4xl text-3xl font-bold leading-[1.08] tracking-tight text-white md:text-6xl"
+              >
+                Common questions, clear answers.
+              </motion.h2>
+              <motion.p
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: 0.06 }}
+                className="mt-4 max-w-3xl text-base leading-relaxed text-stone-300 md:text-lg"
+              >
+                Everything you need to know before uploading your resume and starting analysis.
+              </motion.p>
+              <div className="mt-10 space-y-3">
+                {[
+                  {
+                    q: "Do I need to sign up first?",
+                    a: "No. You can upload and run analysis directly, then decide if you want to continue with deeper workflow features.",
+                  },
+                  {
+                    q: "Which roles are supported?",
+                    a: "Core workflows are available for Frontend, Backend, Data Analyst, and Full-Stack profiles with role-specific skill checks.",
+                  },
+                  {
+                    q: "How long does analysis take?",
+                    a: "Most resumes complete in under a minute. Larger files with dense project history can take slightly longer.",
+                  },
+                  {
+                    q: "What kind of output do I get?",
+                    a: "You get ATS score context, skill-gap mapping, and prioritized AI recommendations you can apply immediately.",
+                  },
+                ].map((item, index) => (
+                  <motion.div
+                    key={item.q}
+                    initial={{ opacity: 0, y: 18 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, amount: 0.3 }}
+                    transition={{ duration: 0.4, delay: index * 0.05 }}
+                    className="rounded-xl border border-stone-700/75 bg-stone-900/60 px-5 py-4 shadow-[0_8px_18px_rgba(0,0,0,0.25)]"
+                  >
+                    <p className="text-lg font-semibold text-white">{item.q}</p>
+                    <p className="mt-1 text-base leading-relaxed text-stone-300">{item.a}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </div>
         </section>
       </main>
     </div>
@@ -292,6 +736,7 @@ function LandingPage() {
 }
 
 function AnalyzePage() {
+  const location = useLocation();
   const COMPANY_SHORTLIST_TEMPLATES = [
     { companyId: "code-orbit", companyName: "CodeOrbit", role: "Backend Developer", requiredSkills: ["Node", "Express", "MongoDB", "SQL", "System Design"] },
     { companyId: "pixel-forge", companyName: "PixelForge", role: "Frontend Developer", requiredSkills: ["React", "JavaScript", "TypeScript", "CSS", "REST API"] },
@@ -352,8 +797,8 @@ function AnalyzePage() {
     };
   };
 
-  const [fileName, setFileName] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileName, setFileName] = useState(() => SESSION_UPLOADED_RESUME_NAME);
+  const [selectedFile, setSelectedFile] = useState(() => SESSION_UPLOADED_RESUME_FILE);
   const [selectedDomain, setSelectedDomain] = useState(() => {
     return appState.getSelectedRole();
   });
@@ -366,6 +811,11 @@ function AnalyzePage() {
   const [isGeneratingClaimTest, setIsGeneratingClaimTest] = useState(false);
   const [isSubmittingClaimTest, setIsSubmittingClaimTest] = useState(false);
   const [claimError, setClaimError] = useState("");
+  const claimResultRef = useRef(null);
+  const claimQuestionsRef = useRef(null);
+  const resumeUploadRef = useRef(null);
+  const dragDepthRef = useRef(0);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const storedResult = getStoredAnalysisResult();
   const activeResult = analysisResult || storedResult;
   const hasAnalysis = Boolean(activeResult);
@@ -384,6 +834,42 @@ function AnalyzePage() {
   const scoreDelta = hasAnalysis && previousScore !== null
     ? (Number(activeResult?.score || 0) - previousScore)
     : null;
+
+  const handleResumeFileSelect = (file) => {
+    const nextFile = file || null;
+    const isPdfByType = nextFile?.type === "application/pdf";
+    const isPdfByName = /\.pdf$/i.test(nextFile?.name || "");
+    if (nextFile && !isPdfByType && !isPdfByName) {
+      setErrorMessage("Only PDF files are supported. Please upload a .pdf file.");
+      return;
+    }
+    setSelectedFile(nextFile);
+    setFileName(nextFile?.name || "");
+    SESSION_UPLOADED_RESUME_FILE = nextFile;
+    SESSION_UPLOADED_RESUME_NAME = nextFile?.name || "";
+    setErrorMessage("");
+  };
+
+  const handleDropzoneDragEnter = (event) => {
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingFile(true);
+  };
+
+  const handleDropzoneDragLeave = (event) => {
+    event.preventDefault();
+    dragDepthRef.current = Math.max(dragDepthRef.current - 1, 0);
+    if (dragDepthRef.current === 0) {
+      setIsDraggingFile(false);
+    }
+  };
+
+  const handleDropzoneDrop = (event) => {
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingFile(false);
+    handleResumeFileSelect(event.dataTransfer?.files?.[0] || null);
+  };
 
   const buildLocalFallback = () => {
     const fallbackExtractedByRole = {
@@ -550,6 +1036,10 @@ function AnalyzePage() {
   const handleGenerateClaimTest = async () => {
     if (!selectedFile) {
       setClaimError("Upload a resume to generate the claim verification test.");
+      window.alert("Please upload your resume first.");
+      if (resumeUploadRef.current) {
+        resumeUploadRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
       return;
     }
 
@@ -562,7 +1052,10 @@ function AnalyzePage() {
       setClaimTest(data);
       setClaimAnswers({});
     } catch (error) {
-      const fallbackSkills = (activeResult?.extractedSkills || []).slice(0, 5);
+      const fallbackSkills = [
+        ...(activeResult?.extractedSkills || []),
+        ...(ROLE_SKILL_MAP[selectedRole] || []),
+      ].filter((skill, idx, arr) => arr.indexOf(skill) === idx).slice(0, 5);
       if (fallbackSkills.length > 0) {
         const localQuestions = fallbackSkills.flatMap((skill, idx) => ([
           {
@@ -660,13 +1153,15 @@ function AnalyzePage() {
         skillBreakdown,
       });
 
-      setClaimResult(normalizeClaimResult({
+      const normalizedClaim = normalizeClaimResult({
         testId: claimTest.testId,
         claimStatus,
         authenticityScore,
         skillBreakdown,
         shortlist,
-      }, claimTest.claimedSkills || []));
+      }, claimTest.claimedSkills || []);
+      setClaimResult(normalizedClaim);
+      appState.setClaimResult(normalizedClaim);
       return;
     }
 
@@ -677,7 +1172,9 @@ function AnalyzePage() {
         testId: claimTest.testId,
         answers,
       });
-      setClaimResult(normalizeClaimResult(data, claimTest.claimedSkills || []));
+      const normalizedClaim = normalizeClaimResult(data, claimTest.claimedSkills || []);
+      setClaimResult(normalizedClaim);
+      appState.setClaimResult(normalizedClaim);
     } catch (error) {
       setClaimError(error.message || "Claim test submission failed.");
     } finally {
@@ -712,11 +1209,32 @@ function AnalyzePage() {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 
+  useEffect(() => {
+    if (claimResult && claimResultRef.current) {
+      claimResultRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [claimResult]);
+
+  useEffect(() => {
+    if (claimTest?.questions?.length && claimQuestionsRef.current) {
+      claimQuestionsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [claimTest]);
+
+  useEffect(() => {
+    if (location.hash === "#verification-test") {
+      const section = document.getElementById("verification-test");
+      if (section) {
+        section.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+  }, [location.hash]);
+
   return (
-    <div className="analyze-bg min-h-screen">
-      <div className="grid w-full gap-0 md:grid-cols-[280px_1fr]">
+    <div className="analyze-bg analyze-flat ats-flat min-h-screen">
+      <div className="w-full">
         <WorkspaceSidebar />
-        <div className="px-8 py-8">
+        <div className="stagger-auto min-h-screen overflow-x-hidden px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
         <WorkspaceTopbar />
         <PageExportActions className="mb-4" />
         <motion.h1
@@ -744,9 +1262,6 @@ function AnalyzePage() {
         >
           <div className="mb-3 flex items-center justify-between">
             <p className="text-sm font-semibold text-slate-800">Select Domain (Required)</p>
-            <span className="rounded-full bg-teal-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-teal-700">
-              
-            </span>
           </div>
           <p className="text-xs text-slate-600">Select your domain</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
@@ -788,41 +1303,44 @@ function AnalyzePage() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.14 }}
+          ref={resumeUploadRef}
           className="glass-panel mt-8 rounded-2xl p-6"
         >
           <label className="mb-3 block text-sm font-semibold text-slate-700">Upload Resume (PDF)</label>
-          <label className="upload-dropzone block cursor-pointer rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center transition-all hover:border-teal-400 hover:bg-teal-50/60">
-            <input
-              type="file"
-              accept="application/pdf"
-              onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                setSelectedFile(file);
-                setFileName(file?.name || "");
-                setErrorMessage("");
-              }}
-              className="hidden"
-            />
+          <div
+            onDragEnter={handleDropzoneDragEnter}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDraggingFile(true);
+            }}
+            onDragLeave={handleDropzoneDragLeave}
+            onDrop={handleDropzoneDrop}
+            className={`upload-dropzone relative block rounded-xl border-2 border-dashed px-4 py-8 text-center transition-all ${
+              isDraggingFile
+                ? "border-teal-500 bg-teal-50"
+                : "border-slate-300 bg-slate-50 hover:border-teal-400 hover:bg-teal-50/60"
+            }`}
+          >
             {!fileName ? (
-              <>
+              <div className="pointer-events-none">
                 <div className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded-full bg-teal-100 text-lg text-teal-700">↑</div>
                 <p className="text-sm font-semibold text-slate-700">Drag & drop resume here</p>
-                <p className="mt-1 text-xs text-slate-500">or click to browse PDF file</p>
-              </>
+                <p className="mt-1 text-xs text-slate-500">PDF only</p>
+              </div>
             ) : (
-              <>
-                <div className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded-full bg-emerald-100 text-lg text-emerald-700">✓</div>
+              <div className="pointer-events-none">
+                <div className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-lg text-slate-600">✓</div>
                 <p className="text-sm font-semibold text-slate-800">{fileName}</p>
-                <p className="mt-1 text-xs text-slate-500">Resume uploaded. Click here to replace file.</p>
-              </>
+                <p className="mt-1 text-xs text-slate-500">Resume uploaded. Drag & drop another PDF to replace.</p>
+              </div>
             )}
-          </label>
+          </div>
           {errorMessage ? <p className="mt-3 text-sm font-medium text-red-600">{errorMessage}</p> : null}
 
           <button
             onClick={handleAnalyze}
             disabled={isAnalyzing}
-            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-5 py-2.5 text-sm font-semibold text-white transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.03] hover:bg-[var(--primary-dark)] disabled:cursor-not-allowed disabled:opacity-80"
+            className="mt-5 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.03] hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-700"
           >
             {isAnalyzing ? (
               <>
@@ -841,9 +1359,9 @@ function AnalyzePage() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="mt-4 grid gap-4 sm:grid-cols-3"
         >
-          <div className="card-lift rounded-xl border border-[var(--border)] bg-white p-4">
+          <div className={`card-lift rounded-xl border p-4 ${(activeResult?.score || 0) >= 49 ? "border-emerald-200 bg-emerald-50/50" : "border-rose-200 bg-rose-50/40"}`}>
             <p className="text-xs text-slate-500">Avg Resume Score</p>
-            <p className="mt-1 text-xl font-bold text-[var(--primary)]">{hasAnalysis ? `${activeResult.score || 0}%` : "0%"}</p>
+            <p className={`mt-1 text-xl font-bold ${getScoreTextClass(activeResult?.score || 0, 49)}`}>{hasAnalysis ? `${activeResult?.score || 0}%` : "0%"}</p>
             {scoreDelta !== null ? (
               <p className={`mt-1 text-xs font-semibold ${scoreDelta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                 {scoreDelta >= 0 ? `+${scoreDelta}` : scoreDelta}% vs previous run
@@ -868,9 +1386,6 @@ function AnalyzePage() {
         >
           <div className="flex items-center justify-between gap-3">
             <p className="text-base font-semibold text-slate-800">Analysis Summary</p>
-            <span className="rounded-full bg-teal-100 px-3 py-1 text-xs font-semibold text-teal-700">
-              {hasAnalysis ? "Ready" : "Pending"}
-            </span>
           </div>
           {!hasAnalysis ? (
             <p className="mt-4 text-sm text-slate-600">
@@ -903,90 +1418,111 @@ function AnalyzePage() {
         </motion.div>
 
         <motion.div
+          id="verification-test"
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
-          className="glass-panel mt-6 rounded-2xl p-6"
+          className="mt-6 overflow-hidden border border-slate-300 bg-gradient-to-b from-white to-slate-50/70"
         >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-base font-semibold text-slate-800">Resume  Verification Test</p>
-              <p className="mt-1 text-sm text-slate-600">
-                Questions are generated from resume skills and evaluated for company fit.
-              </p>
-            </div>
-            <button
-              onClick={handleGenerateClaimTest}
-              disabled={isGeneratingClaimTest || !selectedFile}
-              className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isGeneratingClaimTest ? "Generating..." : "Generate Test"}
-            </button>
-          </div>
-
-          {claimError ? <p className="mt-3 text-sm font-medium text-red-600">{claimError}</p> : null}
-
-          {claimTest?.questions?.length ? (
-            <div className="mt-5">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="mt-1 text-xs text-slate-600">
-                  Claimed Skills: {(claimTest.claimedSkills || []).join(", ")}
+          <div className="border-b border-slate-200 bg-[linear-gradient(120deg,rgba(15,23,42,0.03),rgba(15,23,42,0.01))] px-4 py-4 md:px-6 md:py-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Proof Test</p>
+                <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Resume Verification Test</p>
+                <p className="mt-2 text-sm text-slate-600">
+                  Skill-wise questions generated from your resume to validate authenticity and shortlist quality.
                 </p>
               </div>
-              <div className="mt-4 space-y-3">
-                {claimQuestionGroups.map((group) => (
-                  <div key={group.skill} className="rounded-xl border border-teal-100 bg-white p-4 shadow-sm">
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">{group.skill} Section</p>
-                      <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-700">
-                        {group.questions.length} Questions
-                      </span>
-                    </div>
-                    <div className="space-y-3">
-                      {group.questions.map((question, questionIndex) => (
-                        <div key={question.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                          <p className="text-sm font-semibold text-slate-800">
-                            Q{questionIndex + 1}. {question.prompt}
-                          </p>
-                          <div className="mt-3 space-y-2">
-                            {(question.options || []).map((option, optionIndex) => (
-                              <label
-                                key={`${question.id}-${optionIndex}`}
-                                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                                  claimAnswers[question.id] === optionIndex
-                                    ? "border-teal-300 bg-teal-50"
-                                    : "border-slate-200 bg-white"
-                                }`}
-                              >
-                                <input
-                                  type="radio"
-                                  name={question.id}
-                                  checked={claimAnswers[question.id] === optionIndex}
-                                  onChange={() => handleSelectAnswer(question.id, optionIndex)}
-                                />
-                                <span>{option}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
               <button
-                onClick={handleSubmitClaimTest}
-                disabled={isSubmittingClaimTest}
-                className="mt-4 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={handleGenerateClaimTest}
+                disabled={isGeneratingClaimTest}
+                className="rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-700"
               >
-                {isSubmittingClaimTest ? "Submitting..." : "Submit Test & Generate Shortlist"}
+                {isGeneratingClaimTest ? "Generating..." : "Generate Test"}
               </button>
             </div>
-          ) : null}
+          </div>
+
+          <div className="px-4 py-4 md:px-6 md:py-5">
+            {!selectedFile ? (
+              <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+                Upload a resume to generate the claim verification test.
+              </p>
+            ) : null}
+            {claimError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{claimError}</p> : null}
+
+            {claimTest?.questions?.length ? (
+              <div className="mt-1">
+                <div className="border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Claimed Skills</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(claimTest.claimedSkills || []).map((skill) => (
+                      <span key={skill} className="border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              <div ref={claimQuestionsRef} className="mt-4 space-y-4">
+                  {claimQuestionGroups.map((group) => (
+                    <div key={group.skill} className="border border-slate-300 bg-white">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 md:px-4">
+                        <p className="text-sm font-bold uppercase tracking-[0.1em] text-slate-700">{group.skill} Section</p>
+                        <span className="bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                          {group.questions.length} Questions
+                        </span>
+                      </div>
+                      <div className="space-y-4 px-4 py-4">
+                        {group.questions.map((question, questionIndex) => (
+                          <div key={question.id} className="verification-question-card border border-slate-200 bg-slate-50/60 p-4">
+                            <p className="text-base font-semibold text-slate-900">
+                              Q{questionIndex + 1}. {question.prompt}
+                            </p>
+                            <div className="mt-3 space-y-2 overflow-hidden">
+                              {(question.options || []).map((option, optionIndex) => (
+                                <label
+                                  key={`${question.id}-${optionIndex}`}
+                                  className={`verification-option flex w-full cursor-pointer items-start gap-3 border px-3 py-2 text-sm transition ${
+                                    claimAnswers[question.id] === optionIndex
+                                      ? "border-slate-800 bg-slate-100 text-slate-900"
+                                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={question.id}
+                                    checked={claimAnswers[question.id] === optionIndex}
+                                    onChange={() => handleSelectAnswer(question.id, optionIndex)}
+                                    className="mt-0.5 shrink-0"
+                                  />
+                                  <span className="min-w-0 whitespace-normal break-words leading-snug">{option}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-5 flex flex-col items-start justify-between gap-3 border border-slate-300 bg-white px-4 py-3 sm:flex-row sm:items-center">
+                  <p className="text-sm font-medium text-slate-800">click show my result to generate score</p>
+                  <button
+                    onClick={handleSubmitClaimTest}
+                    disabled={isSubmittingClaimTest}
+                    className="rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-700"
+                  >
+                    {isSubmittingClaimTest ? "Submitting..." : "Show My Result"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </motion.div>
 
         {claimResult ? (
           <motion.div
+            ref={claimResultRef}
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.34 }}
@@ -1005,9 +1541,9 @@ function AnalyzePage() {
             </div>
 
             <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className={`rounded-xl border p-4 ${(claimResult.authenticityScore || 0) >= 49 ? "border-emerald-200 bg-emerald-50/50" : "border-rose-200 bg-rose-50/40"}`}>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Overall Score</p>
-                <p className="mt-2 text-3xl font-bold text-teal-700">{claimResult.authenticityScore || 0}%</p>
+                <p className={`mt-2 text-3xl font-bold ${getScoreTextClass(claimResult.authenticityScore || 0, 49)}`}>{claimResult.authenticityScore || 0}%</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-4">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Skills Rating</p>
@@ -1028,7 +1564,7 @@ function AnalyzePage() {
                     <div key={item.skill} className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-slate-700">{item.skill}</span>
-                        <span className="font-semibold text-slate-800">{item.score}%</span>
+                        <span className={`font-semibold ${getScoreTextClass(item.score, 49)}`}>{item.score}%</span>
                       </div>
                       <div className="mt-2 h-2 w-full rounded-full bg-slate-200">
                         <div
@@ -1075,53 +1611,84 @@ function AnalyzePage() {
 }
 
 function WorkspaceSidebar() {
+  const { isDark } = useContext(ThemeContext);
+  const navigate = useNavigate();
+  const [lockError, setLockError] = useState("");
+  const hasVerificationAccess = Boolean(appState.getClaimResult());
+  const lockedItemClass = `block min-w-max rounded-xl border border-transparent px-3 py-3 text-[15px] font-semibold cursor-not-allowed opacity-75 lg:min-w-0 ${
+    isDark ? "text-slate-500" : "text-slate-400"
+  }`;
+  const activeClass = "block min-w-max rounded-xl border px-3 py-3 text-[15px] font-semibold transition-all lg:min-w-0";
+  const navClass = ({ isActive }) =>
+    `${activeClass} ${
+      isActive
+        ? (isDark
+          ? "border-slate-600 bg-slate-800/80 text-slate-100 shadow-[inset_0_1px_0_rgba(148,163,184,0.25),0_6px_14px_rgba(2,6,23,0.35)]"
+          : "border-slate-300 bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_6px_14px_rgba(15,23,42,0.12)]")
+        : (isDark
+          ? "border-transparent text-slate-300 hover:-translate-y-[1px] hover:border-slate-600 hover:bg-slate-800/65 hover:text-slate-100 hover:shadow-[inset_0_1px_0_rgba(148,163,184,0.2),0_6px_12px_rgba(2,6,23,0.28)]"
+          : "border-transparent text-slate-600 hover:-translate-y-[1px] hover:border-slate-200 hover:bg-white/80 hover:text-slate-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_12px_rgba(15,23,42,0.1)]")
+    }`;
+  const handleLockedClick = () => {
+    const message = "Please complete the Resume Verification Test first.";
+    setLockError(message);
+    window.alert(message);
+    navigate(`/analyze?focus=verification&t=${Date.now()}#verification-test`);
+  };
+
   return (
-    <aside className="glass-panel sticky top-0 h-screen border-r px-4 py-8">
-      <p className="mb-5 text-xs font-bold uppercase tracking-wide text-slate-500">Menu</p>
-      <div className="space-y-2">
-        <NavLink
-          to="/analyze"
-          className={({ isActive }) =>
-            `block rounded-xl px-3 py-3 text-base font-semibold transition-all ${isActive ? "border border-teal-200 bg-teal-50 text-teal-800" : "text-slate-600 hover:bg-slate-100"}`
-          }
-        >
+    <aside className={`no-print top-0 z-30 border-b px-3 py-3 backdrop-blur shadow-[0_8px_18px_rgba(15,23,42,0.1)] lg:fixed lg:left-0 lg:top-0 lg:h-screen lg:w-[280px] lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-4 lg:py-8 lg:shadow-[10px_0_32px_rgba(15,23,42,0.16)] ${
+      isDark
+        ? "border-slate-700/80 bg-[linear-gradient(180deg,rgba(30,41,59,0.94),rgba(2,6,23,0.98))] [box-shadow:inset_0_1px_0_rgba(148,163,184,0.24),inset_0_-1px_0_rgba(15,23,42,0.75),10px_0_32px_rgba(2,6,23,0.5)]"
+        : "border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(241,245,249,0.94))] [box-shadow:inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(148,163,184,0.2),10px_0_32px_rgba(15,23,42,0.14)]"
+    }`}>
+      <p className={`mb-2 hidden text-[11px] font-bold uppercase tracking-[0.16em] lg:block ${isDark ? "text-slate-400" : "text-slate-500"}`}>comand center</p>
+      <div className="mb-0 lg:mb-5" />
+      <div className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-2 lg:overflow-visible lg:pb-0">
+        <NavLink to="/analyze" className={navClass}>
           Analyze
         </NavLink>
-        <NavLink
-          to="/missing-skills"
-          className={({ isActive }) =>
-            `block rounded-xl px-3 py-3 text-base font-semibold transition-all ${isActive ? "border border-teal-200 bg-teal-50 text-teal-800" : "text-slate-600 hover:bg-slate-100"}`
-          }
-        >
-          Missing Skills
-        </NavLink>
-        <NavLink
-          to="/ats-checker"
-          className={({ isActive }) =>
-            `block rounded-xl px-3 py-3 text-base font-semibold transition-all ${isActive ? "border border-teal-200 bg-teal-50 text-teal-800" : "text-slate-600 hover:bg-slate-100"}`
-          }
-        >
-          ATS Checker
-        </NavLink>
-        <NavLink
-          to="/icm-score"
-          className={({ isActive }) =>
-            `block rounded-xl px-3 py-3 text-base font-semibold transition-all ${isActive ? "border border-teal-200 bg-teal-50 text-teal-800" : "text-slate-600 hover:bg-slate-100"}`
-          }
-        >
-          ICM Score
-        </NavLink>
-        <NavLink
-          to="/role-match"
-          className={({ isActive }) =>
-            `block rounded-xl px-3 py-3 text-base font-semibold transition-all ${isActive ? "border border-teal-200 bg-teal-50 text-teal-800" : "text-slate-600 hover:bg-slate-100"}`
-          }
-        >
-          Role Match
-        </NavLink>
+        {hasVerificationAccess ? (
+          <>
+            <NavLink to="/missing-skills" className={navClass}>Missing Skills</NavLink>
+            <NavLink to="/ats-checker" className={navClass}>ATS Checker</NavLink>
+            <NavLink to="/icm-score" className={navClass}>ICM Score</NavLink>
+            <NavLink to="/role-match" className={navClass}>Role Match</NavLink>
+            <NavLink to="/application-readiness" className={navClass}>Application Readiness</NavLink>
+            <NavLink to="/interview-loop" className={navClass}>Interview Loop</NavLink>
+            <NavLink to="/roadmap-builder" className={navClass}>Roadmap</NavLink>
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={handleLockedClick} className={`${lockedItemClass} min-w-max text-left lg:w-full`}>Missing Skills</button>
+            <button type="button" onClick={handleLockedClick} className={`${lockedItemClass} min-w-max text-left lg:w-full`}>ATS Checker</button>
+            <button type="button" onClick={handleLockedClick} className={`${lockedItemClass} min-w-max text-left lg:w-full`}>ICM Score</button>
+            <button type="button" onClick={handleLockedClick} className={`${lockedItemClass} min-w-max text-left lg:w-full`}>Role Match</button>
+            <button type="button" onClick={handleLockedClick} className={`${lockedItemClass} min-w-max text-left lg:w-full`}>Application Readiness</button>
+            <button type="button" onClick={handleLockedClick} className={`${lockedItemClass} min-w-max text-left lg:w-full`}>Interview Loop</button>
+            <button type="button" onClick={handleLockedClick} className={`${lockedItemClass} min-w-max text-left lg:w-full`}>Roadmap</button>
+          </>
+        )}
+        {lockError ? (
+          <p className={`mt-2 px-3 py-2 text-xs font-medium ${
+            isDark
+              ? "border border-amber-500/30 bg-amber-500/10 text-amber-200"
+              : "border border-amber-200 bg-amber-50 text-amber-800"
+          }`}>
+            {lockError}
+          </p>
+        ) : null}
       </div>
     </aside>
   );
+}
+
+function ProtectedWorkspaceRoute({ children }) {
+  const hasVerificationAccess = Boolean(appState.getClaimResult());
+  if (!hasVerificationAccess) {
+    return <Navigate to="/analyze" replace />;
+  }
+  return children;
 }
 
 function AtsCheckerPage() {
@@ -1146,6 +1713,11 @@ function AtsCheckerPage() {
   const atsScore = hasAnalysis
     ? Math.round((0.35 * keywordCoverage) + (0.35 * roleCoverage) + (0.2 * readabilityScore) + (0.1 * formatScore))
     : 0;
+  const atsScoreClass = getScoreTextClass(atsScore, 49);
+  const readabilityClass = getScoreTextClass(readabilityScore, 49);
+  const formatClass = getScoreTextClass(formatScore, 49);
+  const keywordCoverageClass = getScoreTextClass(keywordCoverage, 49);
+  const roleCoverageClass = getScoreTextClass(roleCoverage, 49);
 
   const issueChecklist = [
     {
@@ -1198,21 +1770,26 @@ function AtsCheckerPage() {
   }));
   const passedChecks = issueChecklist.filter((item) => item.status === "good").length;
   const reviewChecks = issueChecklist.length - passedChecks;
+  const passRate = issueChecklist.length ? Math.round((passedChecks / issueChecklist.length) * 100) : 0;
+  const reviewRate = issueChecklist.length ? Math.round((reviewChecks / issueChecklist.length) * 100) : 0;
 
   return (
-    <div className="analyze-bg min-h-screen">
-      <div className="grid w-full gap-0 md:grid-cols-[280px_1fr]">
+    <div className="analyze-bg analyze-flat ats-flat min-h-screen">
+      <div className="w-full">
         <WorkspaceSidebar />
-        <div className="px-8 py-8">
+        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
           <WorkspaceTopbar />
           <PageExportActions className="mb-4" />
-          <div className="glass-panel rounded-2xl p-6">
-            <section className="space-y-4">
-              <div className="editorial-strip rounded-xl p-5">
-                <p className="text-base font-semibold uppercase tracking-wide text-slate-500">ATS Compliance</p>
-                <h1 className="mt-2 text-3xl font-bold text-slate-900">Resume Scanner</h1>
-                <p className="mt-2 text-base text-slate-600">
-                  Role baseline: <span className="font-semibold text-slate-700">{selectedRole}</span>
+          <div>
+            <div className="mb-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ATS Checker</p>
+              <h1 className="mt-2 text-3xl font-bold md:text-5xl text-slate-900">ATS Precision Check</h1>
+            </div>
+            <section className="space-y-6">
+              <div className="editorial-strip rounded-xl p-6">
+                <p className="text-base font-semibold uppercase tracking-wide text-slate-500">Scanner Overview</p>
+                <p className="mt-3 text-lg text-slate-600">
+                  Active role benchmark: <span className="font-semibold text-slate-700">{selectedRole}</span>
                 </p>
                 {hasAnalysis && analysisMeta ? (
                   <p className="mt-1 text-xs text-slate-500">
@@ -1221,60 +1798,60 @@ function AtsCheckerPage() {
                 ) : null}
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="editorial-strip rounded-xl p-4">
-                  <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Overall Score</p>
-                  <p className="mt-1 text-5xl font-bold text-slate-900">{atsScore}</p>
-                  <p className="text-base text-slate-500">out of 100</p>
+              <div className="grid gap-5 md:grid-cols-3">
+                <div className={`editorial-strip rounded-xl p-5 ${atsScore >= 49 ? "border border-emerald-200 bg-emerald-50/50" : "border border-rose-200 bg-rose-50/40"}`}>
+                  <p className="text-base font-semibold uppercase tracking-wide text-slate-500">ATS Index</p>
+                  <p className={`mt-1 text-5xl font-bold ${atsScoreClass}`}>{atsScore}</p>
+                  <p className="text-lg text-slate-500">scanner score</p>
                 </div>
-                <div className="editorial-strip rounded-xl p-4">
-                  <p className="text-base font-semibold text-slate-700">Readability</p>
-                  <p className="mt-1 text-3xl font-bold text-slate-900">{readabilityScore}%</p>
-                  <p className="mt-1 text-sm text-slate-600">How clearly ATS can parse your section content.</p>
+                <div className={`editorial-strip rounded-xl p-5 ${readabilityScore >= 49 ? "border border-emerald-200 bg-emerald-50/50" : "border border-rose-200 bg-rose-50/40"}`}>
+                  <p className="text-lg font-semibold text-slate-700">Parsing Clarity</p>
+                  <p className={`mt-1 text-3xl font-bold ${readabilityClass}`}>{readabilityScore}%</p>
+                  <p className="mt-2 text-base text-slate-600">How cleanly ATS can interpret your section structure.</p>
                 </div>
-                <div className="editorial-strip rounded-xl p-4">
-                  <p className="text-base font-semibold text-slate-700">Format Safety</p>
-                  <p className="mt-1 text-3xl font-bold text-slate-900">{formatScore}%</p>
-                  <p className="mt-1 text-sm text-slate-600">Formatting stability for parser compatibility.</p>
+                <div className={`editorial-strip rounded-xl p-5 ${formatScore >= 49 ? "border border-emerald-200 bg-emerald-50/50" : "border border-rose-200 bg-rose-50/40"}`}>
+                  <p className="text-lg font-semibold text-slate-700">Template Stability</p>
+                  <p className={`mt-1 text-3xl font-bold ${formatClass}`}>{formatScore}%</p>
+                  <p className="mt-2 text-base text-slate-600">Layout reliability across recruiter ATS systems.</p>
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="editorial-strip flex h-full flex-col rounded-xl p-4">
-                  <p className="text-base font-semibold text-slate-700">Coverage Metrics</p>
-                  <div className="mt-3 grid gap-2">
-                    <div className="rounded-lg bg-slate-50 px-3 py-2">
-                      <p className="text-sm text-slate-500">Keyword Coverage</p>
-                      <p className="text-xl font-bold text-slate-800">{keywordCoverage}%</p>
+              <div className="grid gap-5 md:grid-cols-2">
+                <div className="editorial-strip flex h-full flex-col rounded-xl p-5">
+                  <p className="text-lg font-semibold text-slate-700">Coverage Snapshot</p>
+                  <div className="mt-4 grid gap-3">
+                    <div className="rounded-lg bg-slate-50 px-4 py-3">
+                      <p className="text-base text-slate-500">Keyword Coverage</p>
+                      <p className={`text-xl font-bold ${keywordCoverageClass}`}>{keywordCoverage}%</p>
                     </div>
-                    <div className="rounded-lg bg-slate-50 px-3 py-2">
-                      <p className="text-sm text-slate-500">Role Alignment</p>
-                      <p className="text-xl font-bold text-slate-800">{roleCoverage}%</p>
+                    <div className="rounded-lg bg-slate-50 px-4 py-3">
+                      <p className="text-base text-slate-500">Role Alignment</p>
+                      <p className={`text-xl font-bold ${roleCoverageClass}`}>{roleCoverage}%</p>
                     </div>
                   </div>
                   {!hasAnalysis && (
-                    <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
-                      Analyze resume first to activate full ATS scan.
+                    <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-base font-semibold text-amber-800">
+                      Upload + analyze resume to unlock full ATS diagnostics.
                     </p>
                   )}
                 </div>
-                <div className="editorial-strip h-fit rounded-xl p-4">
-                  <p className="text-base font-semibold text-slate-700">Domain Alignment Notes</p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Current baseline is <span className="font-semibold">{selectedRole}</span>. ATS checks are tuned against this domain's expected skill vocabulary.
+                <div className="editorial-strip h-fit rounded-xl p-5">
+                  <p className="text-lg font-semibold text-slate-700">Role Alignment Notes</p>
+                  <p className="mt-2 text-base text-slate-600">
+                    Baseline is <span className="font-semibold">{selectedRole}</span>. Signals are measured against role-specific hiring keywords.
                   </p>
-                  <div className="mt-3 grid gap-2">
-                    <div className="rounded-lg border border-slate-100 bg-white px-3 py-2">
-                      <p className="text-sm font-semibold text-slate-800">Domain keyword need</p>
-                      <p className="text-sm text-slate-600">
+                  <div className="mt-4 grid gap-3">
+                    <div className="rounded-lg border border-slate-100 bg-white px-4 py-3">
+                      <p className="text-base font-semibold text-slate-800">Domain keyword need</p>
+                      <p className="text-base text-slate-600">
                         {missingSkills.length
                           ? `${selectedRole} domain still needs better alignment on: ${missingSkills.slice(0, 5).join(", ")}${missingSkills.length > 5 ? "..." : ""}.`
                           : `No major ${selectedRole} domain keyword gap detected.`}
                       </p>
                     </div>
-                    <div className="rounded-lg border border-slate-100 bg-white px-3 py-2">
-                      <p className="text-sm font-semibold text-slate-800">How to align better</p>
-                      <p className="text-sm text-slate-600">
+                    <div className="rounded-lg border border-slate-100 bg-white px-4 py-3">
+                      <p className="text-base font-semibold text-slate-800">Optimization Direction</p>
+                      <p className="text-base text-slate-600">
                         Add one impact bullet per missing keyword in project or experience section, and mirror JD wording where relevant.
                       </p>
                     </div>
@@ -1295,11 +1872,11 @@ function AtsCheckerPage() {
                       <div className="flex h-2.5 overflow-hidden rounded-full">
                         <div
                           className="bg-emerald-500"
-                          style={{ width: `${issueChecklist.length ? Math.round((passedChecks / issueChecklist.length) * 100) : 0}%` }}
+                          style={{ width: `${passRate}%` }}
                         />
                         <div
-                          className="bg-amber-500"
-                          style={{ width: `${issueChecklist.length ? Math.round((reviewChecks / issueChecklist.length) * 100) : 0}%` }}
+                          className="bg-rose-500"
+                          style={{ width: `${reviewRate}%` }}
                         />
                       </div>
                     </div>
@@ -1312,7 +1889,7 @@ function AtsCheckerPage() {
                             <p className="text-sm font-semibold text-slate-800">{item.label}</p>
                             <p className="text-sm text-slate-600">{item.detail}</p>
                           </div>
-                          <span className={`mt-0.5 rounded-full px-2.5 py-1 text-sm font-semibold ${item.status === "good" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                          <span className={`mt-0.5 rounded-full px-2.5 py-1 text-sm font-semibold ${item.status === "good" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
                             {item.status === "good" ? "Pass" : "Review"}
                           </span>
                         </div>
@@ -1340,9 +1917,8 @@ function AtsCheckerPage() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fix Priority Queue</p>
                     <div className="mt-2 space-y-1.5">
                       {(missingSkills.length ? missingSkills : ["No priority keyword gap"]).slice(0, 6).map((skill, idx) => (
-                        <div key={`${skill}-${idx}`} className="flex items-center justify-between rounded-md bg-slate-50 px-2.5 py-1.5">
+                        <div key={`${skill}-${idx}`} className="rounded-md bg-slate-50 px-2.5 py-1.5">
                           <span className="text-sm text-slate-700">{skill}</span>
-                          <span className="text-xs font-semibold text-slate-500">P{idx + 1}</span>
                         </div>
                       ))}
                     </div>
@@ -1371,84 +1947,35 @@ function AtsCheckerPage() {
 }
 
 function WorkspaceTopbar() {
-  const navigate = useNavigate();
   const { isDark, toggleTheme } = useContext(ThemeContext);
-  const [isDemo, setIsDemo] = useState(isDemoModeActive);
-
-  const runTopbarDemo = () => {
-    const demo = getDemoAnalysisResult();
-    appState.setAnalysisResult(demo);
-    appState.setSelectedRole("Backend Developer");
-    appState.setAnalysisMeta({
-      source: "demo",
-      analyzedAt: new Date().toISOString(),
-      durationMs: 0,
-    });
-    appState.pushAnalysisHistory({
-      role: "Backend Developer",
-      score: demo.score || 0,
-      source: "demo",
-      at: new Date().toISOString(),
-    });
-    setDemoMode(true);
-    setIsDemo(true);
-    navigate("/role-match");
-  };
-
-  const exitDemoMode = () => {
-    setDemoMode(false);
-    setIsDemo(false);
-    navigate("/analyze");
-  };
 
   return (
-    <div className="glass-panel mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl px-5 py-4">
-      <p className="text-2xl font-bold text-slate-800">ResumeIQ Workspace</p>
+    <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-1 pb-4">
+      <p className="premium-title flex items-center gap-2 text-2xl font-bold text-slate-800">
+        <span className="inline-flex h-6 w-5 items-center justify-center rounded-sm border border-slate-300 bg-white text-[10px] font-bold text-slate-900">▤</span>
+        ResumePilot
+      </p>
       <div className="flex items-center gap-2">
-        {isDemo ? (
-          <button
-            onClick={exitDemoMode}
-            className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold shadow-sm transition-all ${
-              isDark
-                ? "border-rose-500/60 bg-gradient-to-r from-rose-900/60 to-slate-900 text-rose-200 hover:from-rose-900/80 hover:to-slate-900"
-                : "border-rose-300 bg-gradient-to-r from-rose-50 to-white text-rose-700 hover:from-rose-100 hover:to-rose-50 hover:shadow"
-            }`}
-          >
-            Exit Demo
-          </button>
-        ) : null}
-        <button
-          onClick={runTopbarDemo}
-          className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold shadow-sm transition-all ${
-            isDemo
-              ? isDark
-                ? "border-teal-400/60 bg-gradient-to-r from-teal-900/60 to-emerald-900/60 text-teal-200"
-                : "border-teal-300 bg-gradient-to-r from-teal-100 to-emerald-100 text-teal-800"
-              : isDark
-                ? "border-slate-600 bg-gradient-to-r from-slate-800 to-slate-700 text-slate-200 hover:from-slate-700 hover:to-slate-600"
-                : "border-slate-300 bg-gradient-to-r from-slate-100 to-white text-slate-700 hover:from-slate-200 hover:to-slate-100"
-          }`}
-        >
-          {isDemo ? "Demo Active" : "Launch Demo"}
-        </button>
         <button
           onClick={toggleTheme}
           type="button"
           title={isDark ? "Switch to light mode" : "Switch to dark mode"}
           aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-          className={`relative flex h-9 w-[74px] items-center rounded-full border p-1 shadow-sm transition-all ${
+          className={`relative flex h-10 w-[78px] items-center rounded-full border p-1 transition-all duration-300 active:translate-y-[1px] ${
             isDark
-              ? "border-slate-600 bg-gradient-to-r from-slate-900 to-slate-700"
-              : "border-amber-200 bg-gradient-to-r from-amber-50 to-orange-100"
+              ? "border-slate-700 bg-gradient-to-b from-[#1f2937] via-[#111827] to-[#020617] shadow-[inset_0_1px_0_rgba(148,163,184,0.25),0_8px_18px_rgba(2,6,23,0.45)]"
+              : "border-sky-200 bg-gradient-to-b from-[#f8fafc] via-[#e2e8f0] to-[#cbd5e1] shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_8px_16px_rgba(30,41,59,0.18)]"
           }`}
         >
           <span
-            className={`absolute top-1 h-7 w-7 rounded-full bg-white shadow transition-all ${
-              isDark ? "left-[38px]" : "left-1"
+            className={`absolute top-[3px] h-8 w-8 rounded-full border transition-all duration-300 ${
+              isDark
+                ? "left-[42px] border-slate-500 bg-gradient-to-b from-slate-100 to-slate-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_4px_10px_rgba(15,23,42,0.45)]"
+                : "left-[3px] border-amber-200 bg-gradient-to-b from-white to-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,1),0_4px_10px_rgba(120,53,15,0.25)]"
             }`}
           />
           <span
-            className={`relative z-10 grid h-7 w-7 place-items-center rounded-full transition-all ${
+            className={`relative z-10 grid h-8 w-8 place-items-center rounded-full transition-all ${
               !isDark ? "text-amber-700" : "text-slate-300"
             }`}
           >
@@ -1458,7 +1985,7 @@ function WorkspaceTopbar() {
             </svg>
           </span>
           <span
-            className={`relative z-10 ml-auto grid h-7 w-7 place-items-center rounded-full transition-all ${
+            className={`relative z-10 ml-auto grid h-8 w-8 place-items-center rounded-full transition-all ${
               isDark ? "text-cyan-200" : "text-slate-500"
             }`}
           >
@@ -1473,42 +2000,20 @@ function WorkspaceTopbar() {
 }
 
 function PageExportActions({ className = "" }) {
-  const { isDark } = useContext(ThemeContext);
-  const location = useLocation();
-
-  const exportSnapshot = () => {
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      route: location.pathname,
-      selectedRole: appState.getSelectedRole() || "Backend Developer",
-      analysisResult: appState.getAnalysisResult(),
-      analysisMeta: appState.getAnalysisMeta(),
-      demoMode: isDemoModeActive(),
-      theme: isDark ? "dark" : "light",
-    };
-    const safeRoute = String(location.pathname || "workspace").replace(/\//g, "-").replace(/^-+/, "") || "workspace";
-    exportJsonFile(`resumeiq-${safeRoute}-snapshot.json`, payload);
-  };
-
   return (
-    <div className={`flex flex-wrap items-center justify-end gap-2 ${className}`}>
+    <div className={`no-print flex flex-wrap items-center justify-end gap-2 ${className}`}>
       <button
         onClick={() => window.print()}
         className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
       >
         Print PDF
       </button>
-      <button
-        onClick={exportSnapshot}
-        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-      >
-        Export JSON
-      </button>
     </div>
   );
 }
 
 function RoleMatchPage() {
+  const roleMatchResultsRef = useRef(null);
   const skillCatalog = [
     "React", "JavaScript", "TypeScript", "CSS", "REST API",
     "Node", "Express", "MongoDB", "System Design", "SQL",
@@ -1553,9 +2058,8 @@ function RoleMatchPage() {
     ...((parsed?.matchedSkills && parsed.matchedSkills.length) ? parsed.matchedSkills : []),
   ])];
   const extractedSet = new Set(extracted.map((s) => normalizeSkill(s)));
-  const fallbackRoleSkills = ROLE_SKILL_MAP[selectedRole] || [];
-  const effectiveRequiredSkills = jdSkills.length ? jdSkills : fallbackRoleSkills;
-  const requiredSkills = hasAnalysis ? effectiveRequiredSkills : [];
+  const hasJdInput = Boolean(jdText.trim());
+  const requiredSkills = hasAnalysis && hasJdInput ? jdSkills : [];
   const matched = requiredSkills.filter((s) => extractedSet.has(normalizeSkill(s)));
   const missing = requiredSkills.filter((s) => !extractedSet.has(normalizeSkill(s)));
   const computeWeightedFit = () => {
@@ -1575,28 +2079,14 @@ function RoleMatchPage() {
     return Math.round(score);
   };
   const fitScore = computeWeightedFit();
-  const matrixData = requiredSkills.map((skill) => {
-    const isMatched = matched.includes(skill);
-    return {
-      skill,
-      isMatched,
-      score: isMatched ? 100 : 28,
-      label: isMatched ? "Matched" : "Missing",
-    };
-  });
-  const timelineSeries = (() => {
-    const history = appState
-      .getAnalysisHistory()
-      .filter((item) => item && Number.isFinite(Number(item.score)))
-      .slice(-6);
-    if (!history.length) {
-      return [{ label: "Now", value: Math.max(fitScore, 4) }];
-    }
-    return history.map((item, idx) => ({
-      label: `R${idx + 1}`,
-      value: Math.max(Number(item.score) || 0, 4),
-    }));
-  })();
+  const matchedRatioPercent = requiredSkills.length ? Math.round((matched.length / requiredSkills.length) * 100) : 0;
+  const missingRatioPercent = requiredSkills.length ? Math.round((missing.length / requiredSkills.length) * 100) : 0;
+  const fitScoreTextClass = getScoreTextClass(fitScore, 49);
+  const fitScoreBarClass = getScoreBarClass(fitScore, 49);
+  const matchedRatioTextClass = getScoreTextClass(matchedRatioPercent, 49);
+  const matchedRatioBarClass = getScoreBarClass(matchedRatioPercent, 49);
+  const missingRatioTextClass = getInverseScoreTextClass(missingRatioPercent, 49);
+  const missingRatioBarClass = getInverseScoreBarClass(missingRatioPercent, 49);
   const evidenceQuality = (() => {
     const matchedRatio = requiredSkills.length ? (matched.length / requiredSkills.length) : 0;
     const mentionDepth = extracted.length ? (matched.length / extracted.length) : 0;
@@ -1659,16 +2149,37 @@ function RoleMatchPage() {
     setJdSkills(result.skills);
     setJdSignal(result.signal);
     appState.setJdDetected(Boolean(result.skills.length));
+    window.requestAnimationFrame(() => {
+      if (roleMatchResultsRef.current) {
+        roleMatchResultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
   };
 
+  useEffect(() => {
+    if (!jdText.trim()) {
+      setHasDetectedJD(false);
+      setJdSkills([]);
+      setJdSignal({ mustHave: [], preferred: [], tools: [] });
+      appState.setJdDetected(false);
+      return;
+    }
+
+    const result = detectSkillsFromText(jdText);
+    setHasDetectedJD(true);
+    setJdSkills(result.skills);
+    setJdSignal(result.signal);
+    appState.setJdDetected(Boolean(result.skills.length));
+  }, [jdText]);
+
   return (
-    <div className="analyze-bg min-h-screen">
-      <div className="grid w-full gap-0 md:grid-cols-[280px_1fr]">
+    <div className="analyze-bg analyze-flat ats-flat min-h-screen">
+      <div className="w-full">
         <WorkspaceSidebar />
-        <div className="px-8 py-8">
+        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
           <WorkspaceTopbar />
           <PageExportActions className="mb-4" />
-          <div className="glass-panel rounded-2xl p-6">
+          <div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
               <div>
                 <h1 className="text-3xl font-bold">Role Match</h1>
@@ -1685,17 +2196,17 @@ function RoleMatchPage() {
                   No resume analysis found. Accurate role match ke liye pehle Analyze page par resume upload karo.
                 </div>
               )}
-              <p className="text-sm font-semibold text-slate-700">Job Description Input (Optional)</p>
+              <p className="text-sm font-semibold text-slate-700">Job Description Input</p>
               <textarea
                 value={jdText}
                 onChange={(e) => setJdText(e.target.value)}
-                placeholder="Paste JD here to detect required skills..."
+                placeholder="Paste JD here. JD add karte hi resume vs JD comparison auto-generate hoga."
                 className="mt-2 h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
               />
               <div className="mt-2 flex gap-2">
                 <button
                   onClick={detectSkillsFromJD}
-                  className="rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-semibold text-white"
+                  className="rounded-lg border border-slate-400 bg-white px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-100"
                 >
                   Detect Skills from JD
                 </button>
@@ -1714,12 +2225,12 @@ function RoleMatchPage() {
               </div>
               <p className="mt-2 text-xs text-slate-500">
                 Mode: {!hasDetectedJD
-                  ? "Using selected role baseline (detect JD to override)"
+                  ? "Waiting for JD input"
                   : !jdText.trim()
                   ? "Waiting for JD input"
                   : jdSkills.length
                     ? "JD-based required skills"
-                    : "No mapped JD skills found, using selected role baseline"}
+                    : "JD detected, but mapped skills were not found in catalog"}
               </p>
               {hasDetectedJD && jdSkills.length ? (
                 <div className="mt-2 grid gap-2 sm:grid-cols-3">
@@ -1739,18 +2250,26 @@ function RoleMatchPage() {
               ) : null}
             </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-3">
+            {!hasJdInput ? (
+              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+                JD paste karo, tabhi Role Match activity aur comparison result show honge.
+              </div>
+            ) : null}
+
+            {hasJdInput ? (
+              <>
+            <div ref={roleMatchResultsRef} className="mt-5 grid gap-4 md:grid-cols-3">
               <div className="editorial-strip card-lift rounded-xl border border-[var(--border)] p-4">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Role Fit</p>
-                <p className="mt-1 text-3xl font-bold text-[var(--primary)]">{fitScore}%</p>
+                <p className={`mt-1 text-3xl font-bold ${fitScoreTextClass}`}>{fitScore}%</p>
               </div>
-              <div className="editorial-strip card-lift rounded-xl border border-[var(--border)] p-4">
+              <div className={`editorial-strip card-lift rounded-xl border p-4 ${matchedRatioPercent >= 49 ? "border-emerald-200 bg-emerald-50/50" : "border-rose-200 bg-rose-50/40"}`}>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Matched</p>
                 <p className="mt-1 text-3xl font-bold text-emerald-700">{matched.length}</p>
               </div>
               <div className="editorial-strip card-lift rounded-xl border border-[var(--border)] p-4">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Missing</p>
-                <p className="mt-1 text-3xl font-bold text-red-700">{missing.length}</p>
+                <p className="mt-1 text-3xl font-bold text-rose-700">{missing.length}</p>
               </div>
             </div>
 
@@ -1818,32 +2337,28 @@ function RoleMatchPage() {
                   <div className="grid gap-3 md:grid-cols-3">
                     <div className="rounded-lg border border-slate-200 bg-white p-3">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Role Fit</p>
-                      <p className="mt-1 text-3xl font-bold text-teal-700">{fitScore}%</p>
+                      <p className={`mt-1 text-3xl font-bold ${fitScoreTextClass}`}>{fitScore}%</p>
                       <div className="mt-2 h-2.5 rounded-full bg-slate-200">
-                        <div className="h-2.5 rounded-full bg-gradient-to-r from-teal-600 to-emerald-600" style={{ width: `${fitScore}%` }} />
+                        <div className={`h-2.5 rounded-full ${fitScoreBarClass}`} style={{ width: `${fitScore}%` }} />
                       </div>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-white p-3">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Matched Ratio</p>
-                      <p className="mt-1 text-3xl font-bold text-emerald-700">
-                        {requiredSkills.length ? Math.round((matched.length / requiredSkills.length) * 100) : 0}%
-                      </p>
+                      <p className={`mt-1 text-3xl font-bold ${matchedRatioTextClass}`}>{matchedRatioPercent}%</p>
                       <div className="mt-2 h-2.5 rounded-full bg-slate-200">
                         <div
-                          className="h-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500"
-                          style={{ width: `${requiredSkills.length ? Math.round((matched.length / requiredSkills.length) * 100) : 0}%` }}
+                          className={`h-2.5 rounded-full ${matchedRatioBarClass}`}
+                          style={{ width: `${matchedRatioPercent}%` }}
                         />
                       </div>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-white p-3">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Missing Ratio</p>
-                      <p className="mt-1 text-3xl font-bold text-rose-700">
-                        {requiredSkills.length ? Math.round((missing.length / requiredSkills.length) * 100) : 0}%
-                      </p>
+                      <p className={`mt-1 text-3xl font-bold ${missingRatioTextClass}`}>{missingRatioPercent}%</p>
                       <div className="mt-2 h-2.5 rounded-full bg-slate-200">
                         <div
-                          className="h-2.5 rounded-full bg-gradient-to-r from-rose-500 to-red-500"
-                          style={{ width: `${requiredSkills.length ? Math.round((missing.length / requiredSkills.length) * 100) : 0}%` }}
+                          className={`h-2.5 rounded-full ${missingRatioBarClass}`}
+                          style={{ width: `${missingRatioPercent}%` }}
                         />
                       </div>
                     </div>
@@ -1851,93 +2366,53 @@ function RoleMatchPage() {
                   <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                     <div className="mb-1 flex items-center justify-between">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence Quality</p>
-                      <p className="text-sm font-semibold text-slate-700">{evidenceQuality.band}</p>
+                      <p className={`text-sm font-semibold ${getScoreTextClass(evidenceQuality.score, 49)}`}>{evidenceQuality.band}</p>
                     </div>
                     <div className="h-2.5 rounded-full bg-slate-200">
-                      <div className="h-2.5 rounded-full bg-gradient-to-r from-sky-500 to-indigo-500" style={{ width: `${evidenceQuality.score}%` }} />
+                      <div className={`h-2.5 rounded-full ${getScoreBarClass(evidenceQuality.score, 49)}`} style={{ width: `${evidenceQuality.score}%` }} />
                     </div>
-                    <p className="mt-1 text-xs text-slate-600">Confidence score: {evidenceQuality.score}%</p>
-                  </div>
-                  <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-                    <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      <span>Analytics Timeline</span>
-                      <span>Current Snapshot</span>
-                    </div>
-                    <div
-                      className="grid h-20 items-end gap-2"
-                      style={{ gridTemplateColumns: `repeat(${Math.max(timelineSeries.length, 1)}, minmax(0, 1fr))` }}
-                    >
-                      {timelineSeries.map((point, idx) => (
-                        <div key={`trend-${idx}`} className="flex flex-col items-center gap-1">
-                          <div className="w-full rounded-t-sm bg-gradient-to-t from-teal-700 to-cyan-400" style={{ height: `${point.value}%` }} />
-                          <span className="text-[10px] text-slate-500">{point.label}</span>
-                        </div>
-                      ))}
-                    </div>
+                    <p className={`mt-1 text-xs ${getScoreTextClass(evidenceQuality.score, 49)}`}>Confidence score: {evidenceQuality.score}%</p>
                   </div>
                 </div>
               </div>
 
               <div className="editorial-strip h-fit rounded-xl p-5">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-slate-700">Skills Matrix Chart</p>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="inline-flex items-center gap-1.5 text-slate-600">
-                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                      Matched
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 text-slate-600">
-                      <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
-                      Missing
-                    </span>
+                  <p className="text-sm font-semibold text-slate-700">Application Strategy</p>
+                  <span className="text-xs text-slate-500">Action-first view</span>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Matched Skills</p>
+                    <p className="mt-1 text-2xl font-bold text-emerald-700">{matched.length}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Gaps to Close</p>
+                    <p className="mt-1 text-2xl font-bold text-rose-700">{missing.length}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Coverage</p>
+                    <p className={`mt-1 text-2xl font-bold ${matchedRatioTextClass}`}>{matchedRatioPercent}%</p>
                   </div>
                 </div>
-                {matrixData.length ? (
-                  <>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2">
-                        <p className="text-xs uppercase tracking-wide text-emerald-700">Matched</p>
-                        <p className="mt-1 text-2xl font-bold text-emerald-800">{matched.length}</p>
-                      </div>
-                      <div className="rounded-lg border border-rose-100 bg-rose-50/60 px-3 py-2">
-                        <p className="text-xs uppercase tracking-wide text-rose-700">Missing</p>
-                        <p className="mt-1 text-2xl font-bold text-rose-800">{missing.length}</p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <p className="text-xs uppercase tracking-wide text-slate-500">Coverage</p>
-                        <p className="mt-1 text-2xl font-bold text-slate-800">{requiredSkills.length ? Math.round((matched.length / requiredSkills.length) * 100) : 0}%</p>
-                      </div>
-                    </div>
-                    <div className="mt-3 rounded-xl border border-slate-100 bg-white p-3">
-                      <div className="relative rounded-lg bg-slate-50 px-2 pb-3 pt-4">
-                        <div className="absolute inset-x-2 top-4 h-px border-t border-dashed border-slate-300" />
-                        <div className="absolute inset-x-2 top-1/2 h-px border-t border-dashed border-slate-300" />
-                        <div className="absolute inset-x-2 bottom-8 h-px border-t border-slate-300" />
-                        <div className="relative z-10 flex h-56 items-end gap-2 overflow-x-auto px-1 pb-1">
-                          {matrixData.map((item) => (
-                            <div key={item.skill} className="flex min-w-[64px] flex-1 flex-col items-center gap-2">
-                              <span className="text-[10px] font-semibold text-slate-500">{item.score}%</span>
-                              <div className="flex h-36 w-8 items-end rounded-md bg-slate-200 p-0.5">
-                                <div
-                                  className={`w-full rounded-sm ${item.isMatched ? "bg-gradient-to-t from-emerald-600 to-teal-400" : "bg-gradient-to-t from-rose-600 to-red-400"}`}
-                                  style={{ height: `${item.score}%` }}
-                                />
-                              </div>
-                              <p className="line-clamp-2 text-center text-[10px] font-semibold text-slate-600">{item.skill}</p>
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.isMatched ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
-                                {item.label}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <p className="mt-3 text-sm text-slate-500">Detect JD skills to render matrix chart.</p>
-                )}
+                <div className="mt-3 divide-y divide-slate-200 border-y border-slate-200 bg-white">
+                  <div className="grid gap-2 px-3 py-3 md:grid-cols-[180px_1fr]">
+                    <p className="text-sm font-semibold text-slate-700">Apply Now To</p>
+                    <p className="text-sm text-slate-600">Companies where JD overlap is high and missing skills are 2 or less.</p>
+                  </div>
+                  <div className="grid gap-2 px-3 py-3 md:grid-cols-[180px_1fr]">
+                    <p className="text-sm font-semibold text-slate-700">Prepare First</p>
+                    <p className="text-sm text-slate-600">If missing skills are 3-5, add 2 proof bullets and 1 project update before applying.</p>
+                  </div>
+                  <div className="grid gap-2 px-3 py-3 md:grid-cols-[180px_1fr]">
+                    <p className="text-sm font-semibold text-slate-700">Hold & Improve</p>
+                    <p className="text-sm text-slate-600">If core stack is missing, prioritize targeted learning sprint and re-run analysis.</p>
+                  </div>
+                </div>
               </div>
             </div>
+              </>
+            ) : null}
 
           </div>
         </div>
@@ -1994,16 +2469,19 @@ function MissingSkillsPage() {
   const completionRate = missingSkills.length
     ? Math.round((completedCount / missingSkills.length) * 100)
     : 0;
+  const totalSkillsTracked = Math.max(matchedSkills.length + missingSkills.length, 1);
+  const matchedRate = Math.round((matchedSkills.length / totalSkillsTracked) * 100);
+  const missingRate = Math.round((missingSkills.length / totalSkillsTracked) * 100);
   const interviewQuestions = missingSkills.flatMap((skill) => ([
     `How would you apply ${skill} in a real project with measurable impact?`,
     `What are common pitfalls in ${skill}, and how do you avoid them?`,
   ])).slice(0, 10);
 
   return (
-    <div className="analyze-bg min-h-screen">
-      <div className="grid w-full gap-0 md:grid-cols-[280px_1fr]">
+    <div className="analyze-bg analyze-flat ats-flat min-h-screen">
+      <div className="w-full">
         <WorkspaceSidebar />
-        <div className="px-8 py-8">
+        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
           <WorkspaceTopbar />
           <PageExportActions className="mb-4" />
 
@@ -2024,11 +2502,11 @@ function MissingSkillsPage() {
             <div className="mt-5 grid gap-3 sm:grid-cols-4">
               <div className="rounded-lg border border-slate-200 p-3">
                 <p className="text-xs text-slate-500">Missing</p>
-                <p className="text-2xl font-bold text-rose-700">{missingSkills.length}</p>
+                <p className={`text-2xl font-bold ${getInverseScoreTextClass(missingRate, 49)}`}>{missingSkills.length}</p>
               </div>
-              <div className="rounded-lg border border-slate-200 p-3">
+              <div className={`rounded-lg border p-3 ${matchedRate >= 49 ? "border-emerald-200 bg-emerald-50/50" : "border-rose-200 bg-rose-50/40"}`}>
                 <p className="text-xs text-slate-500">Matched</p>
-                <p className="text-2xl font-bold text-emerald-700">{matchedSkills.length}</p>
+                <p className={`text-2xl font-bold ${getScoreTextClass(matchedRate, 49)}`}>{matchedSkills.length}</p>
               </div>
               <div className="rounded-lg border border-slate-200 p-3">
                 <p className="text-xs text-slate-500">In Progress</p>
@@ -2036,7 +2514,7 @@ function MissingSkillsPage() {
               </div>
               <div className="rounded-lg border border-slate-200 p-3">
                 <p className="text-xs text-slate-500">Done</p>
-                <p className="text-2xl font-bold text-[var(--primary)]">{completionRate}%</p>
+                <p className={`text-2xl font-bold ${getScoreTextClass(completionRate, 49)}`}>{completionRate}%</p>
               </div>
             </div>
 
@@ -2055,16 +2533,16 @@ function MissingSkillsPage() {
                   )) : <span className="text-sm text-slate-500">No missing skills detected.</span>}
                 </div>
               </div>
-              <div className="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center justify-between border-b border-emerald-100 pb-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <p className="text-base font-semibold text-slate-800">Matched Skills</p>
-                  <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">{matchedSkills.length}</span>
+                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">{matchedSkills.length}</span>
                 </div>
                 <div className="mt-3 space-y-2">
                   {matchedSkills.length ? matchedSkills.map((skill) => (
-                    <div key={skill} className="flex items-center justify-between rounded-md border border-emerald-100 bg-emerald-50/60 px-3 py-2">
+                    <div key={skill} className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2">
                       <p className="text-sm font-medium text-slate-800">{skill}</p>
-                      <span className="text-xs font-semibold text-emerald-700">Verified</span>
+                      <span className="text-xs font-semibold text-slate-600">Verified</span>
                     </div>
                   )) : <span className="text-sm text-slate-500">No matched skills yet.</span>}
                 </div>
@@ -2137,7 +2615,7 @@ function MissingSkillsPage() {
                           <td className="px-5 py-4 align-top">
                             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                               status === "Completed"
-                                ? "bg-emerald-100 text-emerald-700"
+                                ? "bg-slate-100 text-slate-600"
                                 : status === "In Progress"
                                   ? "bg-teal-100 text-teal-700"
                                   : "bg-slate-100 text-slate-700"
@@ -2149,7 +2627,7 @@ function MissingSkillsPage() {
                             <button
                               onClick={() => toggleProgress(item.skill)}
                               disabled={status === "Completed"}
-                              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-base font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-emerald-50 disabled:text-emerald-700"
+                              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-base font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-600"
                             >
                               {actionLabel}
                             </button>
@@ -2237,15 +2715,16 @@ function IcmScorePage() {
       detail: "Checks recruiter/ATS keyword relevance for selected role.",
     },
   ];
+  const finalScoreClass = getScoreTextClass(breakdown.finalScore, 49);
 
   return (
-    <div className="analyze-bg min-h-screen">
-      <div className="grid w-full gap-0 md:grid-cols-[280px_1fr]">
+    <div className="analyze-bg analyze-flat ats-flat min-h-screen">
+      <div className="w-full">
         <WorkspaceSidebar />
-        <div className="px-8 py-8">
+        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
           <WorkspaceTopbar />
           <PageExportActions className="mb-4" />
-          <div className="glass-panel rounded-2xl p-6">
+          <div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h1 className="text-3xl font-bold">ICM Weighted Score</h1>
@@ -2268,19 +2747,19 @@ function IcmScorePage() {
             <div className="mt-5 grid gap-4 md:grid-cols-4">
               <div className="glass-metric card-lift rounded-xl p-4">
                 <p className="text-xs text-slate-500">Skill (40%)</p>
-                <p className="mt-1 text-2xl font-bold text-[var(--primary)]">{breakdown.skillScore}</p>
+                <p className={`mt-1 text-2xl font-bold ${getScoreTextClass(breakdown.skillScore, 49)}`}>{breakdown.skillScore}</p>
               </div>
               <div className="glass-metric card-lift rounded-xl p-4">
                 <p className="text-xs text-slate-500">Experience (25%)</p>
-                <p className="mt-1 text-2xl font-bold text-[var(--primary)]">{breakdown.experienceScore}</p>
+                <p className={`mt-1 text-2xl font-bold ${getScoreTextClass(breakdown.experienceScore, 49)}`}>{breakdown.experienceScore}</p>
               </div>
               <div className="glass-metric card-lift rounded-xl p-4">
                 <p className="text-xs text-slate-500">Projects (20%)</p>
-                <p className="mt-1 text-2xl font-bold text-[var(--primary)]">{breakdown.projectScore}</p>
+                <p className={`mt-1 text-2xl font-bold ${getScoreTextClass(breakdown.projectScore, 49)}`}>{breakdown.projectScore}</p>
               </div>
               <div className="glass-metric card-lift rounded-xl p-4">
                 <p className="text-xs text-slate-500">ATS Keywords (15%)</p>
-                <p className="mt-1 text-2xl font-bold text-[var(--primary)]">{breakdown.keywordScore}</p>
+                <p className={`mt-1 text-2xl font-bold ${getScoreTextClass(breakdown.keywordScore, 49)}`}>{breakdown.keywordScore}</p>
               </div>
             </div>
 
@@ -2292,7 +2771,7 @@ function IcmScorePage() {
               <p className="mt-1 text-xs text-slate-500">
                 Each component is weighted to reflect hiring relevance: skills first, then experience, project depth, and ATS keyword strength.
               </p>
-              <p className="mt-3 text-3xl font-bold text-[var(--primary)]">{breakdown.finalScore} / 100</p>
+              <p className={`mt-3 text-3xl font-bold ${finalScoreClass}`}>{breakdown.finalScore} / 100</p>
               <p className="mt-1 text-sm text-slate-600">
                 {breakdown.finalScore >= 90
                   ? "Highly Job Ready"
@@ -2313,7 +2792,7 @@ function IcmScorePage() {
                 </p>
                 <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
                   <p className="text-sm font-semibold text-slate-700">Current Final Score</p>
-                  <p className="text-2xl font-bold text-[var(--primary)]">{breakdown.finalScore} / 100</p>
+                  <p className={`text-2xl font-bold ${finalScoreClass}`}>{breakdown.finalScore} / 100</p>
                 </div>
               </div>
               <div className="glass-soft rounded-xl p-4">
@@ -2333,7 +2812,7 @@ function IcmScorePage() {
                   <div key={item.label} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
                     <div className="flex items-center justify-between">
                       <p className="text-base font-semibold text-slate-800">{item.label}</p>
-                      <span className="text-lg font-bold text-[var(--primary)]">{item.value}</span>
+                      <span className={`text-lg font-bold ${getScoreTextClass(item.value, 49)}`}>{item.value}</span>
                     </div>
                     <p className="mt-1 text-sm text-slate-600">{item.detail}</p>
                   </div>
@@ -2370,7 +2849,7 @@ function ReportsPage() {
           </div>
           <div className="editorial-strip rounded-xl p-4">
             <p className="text-xs uppercase tracking-wide text-slate-500">Average Score</p>
-            <p className="mt-1 text-3xl font-bold text-slate-900">{avgScore}%</p>
+            <p className={`mt-1 text-3xl font-bold ${getScoreTextClass(avgScore, 49)}`}>{avgScore}%</p>
           </div>
           <div className="editorial-strip rounded-xl p-4">
             <p className="text-xs uppercase tracking-wide text-slate-500">Last Delta</p>
@@ -2385,15 +2864,14 @@ function ReportsPage() {
             {recent.length ? recent.map((item, idx) => (
               <div key={`${item.at || idx}`} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
                 <p className="text-sm text-slate-700">{item.role || "Unknown Role"} • {item.source || "unknown"}</p>
-                <p className="text-sm font-semibold text-slate-900">{item.score || 0}%</p>
+                <p className={`text-sm font-semibold ${getScoreTextClass(item.score || 0, 49)}`}>{item.score || 0}%</p>
               </div>
             )) : (
               <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-4">
                 <p className="text-sm font-semibold text-slate-700">No analysis history yet.</p>
-                <p className="mt-1 text-sm text-slate-500">Run your first analysis or try demo mode to start trend tracking.</p>
+                <p className="mt-1 text-sm text-slate-500">Run your first analysis to start trend tracking.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link to="/analyze" className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-white">Run Analyze</Link>
-                  <Link to="/" className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">Try Demo</Link>
                   <Link to="/role-match" className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">Import JD</Link>
                 </div>
               </div>
@@ -2425,6 +2903,8 @@ function SettingsPage() {
     localStorage.removeItem(ANALYSIS_META_KEY);
     localStorage.removeItem(ANALYSIS_DURATION_KEY);
     localStorage.removeItem(ANALYSIS_HISTORY_KEY);
+    localStorage.removeItem(CLAIM_RESULT_KEY);
+    localStorage.removeItem(INTERVIEW_RESULT_KEY);
     setSavedNote("Analysis data cleared.");
   };
 
@@ -2470,34 +2950,683 @@ function SettingsPage() {
   );
 }
 
+function ApplicationReadinessPage() {
+  const analysis = getStoredAnalysisResult();
+  const claim = appState.getClaimResult();
+  const interview = appState.getInterviewResult();
+  const selectedRole = appState.getSelectedRole() || "Backend Developer";
+  const score = Number(analysis?.score || 0);
+  const claimScore = Number(claim?.authenticityScore || 0);
+  const interviewScore = Number(interview?.overallScore || 0);
+  const weighted = Math.round((score * 0.5) + (claimScore * 0.3) + (interviewScore * 0.2));
+  const decision = weighted >= 75 ? "Apply" : weighted >= 55 ? "Prepare" : "Hold";
+  const companies = [
+    { name: "CodeOrbit", role: "Backend Developer", required: ["Node", "Express", "MongoDB", "SQL"] },
+    { name: "PixelForge", role: "Frontend Developer", required: ["React", "TypeScript", "CSS", "REST API"] },
+    { name: "DataSphere", role: "Data Analyst", required: ["Python", "SQL", "Statistics", "Excel"] },
+  ];
+  const extracted = new Set((analysis?.extractedSkills || []).map((item) => String(item).toLowerCase()));
+  const rows = companies.map((company) => {
+    const matched = company.required.filter((skill) => extracted.has(skill.toLowerCase())).length;
+    const fit = Math.round((matched / company.required.length) * 100);
+    const state = fit >= 70 && decision === "Apply" ? "Apply" : fit >= 50 ? "Prepare" : "Hold";
+    return { ...company, fit, state };
+  });
+  const topGaps = (analysis?.missingSkills || []).slice(0, 5);
+  const strongest = (analysis?.matchedSkills || []).slice(0, 5);
+  const decisionTone = decision === "Apply"
+    ? "text-emerald-700"
+    : decision === "Prepare"
+      ? "text-amber-700"
+      : "text-rose-700";
+  const scoreTone = getScoreTextClass(score, 49);
+  const claimScoreTone = getScoreTextClass(claimScore, 49);
+  const interviewScoreTone = getScoreTextClass(interviewScore, 49);
+  const weightedTone = getScoreTextClass(weighted, 49);
+  const focusPlan = [
+    { day: "Day 1", work: "ATS cleanup", detail: "Fix headline, summary, and keyword alignment for role search systems." },
+    { day: "Day 2", work: "Proof depth", detail: "Add measurable numbers in two strongest projects and one impact bullet." },
+    { day: "Day 3", work: "Skill gap patch", detail: `Target top gaps: ${topGaps.join(", ") || "No critical gaps detected"}.` },
+    { day: "Day 4", work: "Interview story prep", detail: "Create STAR-based stories for architecture, debugging, and collaboration." },
+    { day: "Day 5", work: "Final apply pass", detail: "Run one final scoring pass and shortlist high-fit companies only." },
+  ];
+
+  return (
+    <div className="analyze-bg analyze-flat ats-flat min-h-screen">
+      <div className="w-full">
+        <WorkspaceSidebar />
+        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
+          <WorkspaceTopbar />
+          <PageExportActions className="mb-4" />
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Application Readiness Engine</p>
+            <h1 className="mt-2 text-3xl font-bold md:text-5xl text-slate-900">Company-wise Apply Decision</h1>
+          </div>
+          <div className="editorial-strip p-6">
+            <p className="mt-3 max-w-3xl text-base text-slate-600">
+              Role target: <span className="font-semibold text-slate-800">{selectedRole}</span>. This page combines resume quality,
+              proof-test authenticity, and interview confidence to tell you where to apply now and where to prepare first.
+            </p>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-4">
+            <div className={`editorial-strip p-5 ${score >= 49 ? "border border-emerald-200 bg-emerald-50/50" : "border border-rose-200 bg-rose-50/40"}`}>
+              <p className="text-sm text-slate-500">Resume Score</p>
+              <p className={`text-3xl font-bold ${scoreTone}`}>{score}%</p>
+              <p className="mt-2 text-xs text-slate-500">Weight: 50%</p>
+            </div>
+            <div className={`editorial-strip p-5 ${claimScore >= 49 ? "border border-emerald-200 bg-emerald-50/50" : "border border-rose-200 bg-rose-50/40"}`}>
+              <p className="text-sm text-slate-500">Proof Score</p>
+              <p className={`text-3xl font-bold ${claimScoreTone}`}>{claimScore}%</p>
+              <p className="mt-2 text-xs text-slate-500">Weight: 30%</p>
+            </div>
+            <div className={`editorial-strip p-5 ${interviewScore >= 49 ? "border border-emerald-200 bg-emerald-50/50" : "border border-rose-200 bg-rose-50/40"}`}>
+              <p className="text-sm text-slate-500">Interview Signal</p>
+              <p className={`text-3xl font-bold ${interviewScoreTone}`}>{interviewScore}%</p>
+              <p className="mt-2 text-xs text-slate-500">Weight: 20%</p>
+            </div>
+            <div className={`editorial-strip p-5 ${weighted >= 49 ? "border border-emerald-200 bg-emerald-50/50" : "border border-rose-200 bg-rose-50/40"}`}>
+              <p className={`text-sm ${weightedTone}`}>Final Decision ({weighted}%)</p>
+              <p className={`text-3xl font-bold ${decisionTone}`}>{decision}</p>
+              <p className="mt-2 text-xs text-slate-500">Apply: 75+ | Prepare: 55-74 | Hold: below 55</p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="editorial-strip p-5">
+              <p className="text-sm font-semibold text-slate-700">Strongest Signals</p>
+              <div className="mt-3 space-y-2">
+                {(strongest.length ? strongest : ["No matched skill signal yet"]).map((item) => (
+                  <p key={item} className="text-sm text-slate-700">{item}</p>
+                ))}
+              </div>
+            </div>
+            <div className="editorial-strip p-5">
+              <p className="text-sm font-semibold text-slate-700">Critical Gaps Before High-Stakes Apply</p>
+              <div className="mt-3 space-y-2">
+                {(topGaps.length ? topGaps : ["No major gap detected"]).map((item) => (
+                  <p key={item} className="text-sm text-slate-700">{item}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 overflow-x-auto border border-slate-200 bg-white">
+            <table className="min-w-full text-left">
+              <thead className="border-b border-slate-200 text-sm text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Company</th>
+                  <th className="px-4 py-3">Role</th>
+                  <th className="px-4 py-3">Fit</th>
+                  <th className="px-4 py-3">Decision</th>
+                  <th className="px-4 py-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.name} className="border-b border-slate-200">
+                    <td className="px-4 py-3 text-slate-800">{row.name}</td>
+                    <td className="px-4 py-3 text-slate-700">{row.role}</td>
+                    <td className={`px-4 py-3 ${getScoreTextClass(row.fit, 49)}`}>{row.fit}%</td>
+                    <td className="px-4 py-3 text-slate-800">{row.state}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      {row.state === "Apply" ? "Submit now with current resume." : row.state === "Prepare" ? "Fix 2 gap keywords then apply." : "Hold and rebuild key evidence first."}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-6 editorial-strip p-6">
+            <p className="text-sm font-semibold text-slate-700">5-Day Readiness Sprint</p>
+            <div className="mt-4 divide-y divide-slate-200 border-y border-slate-200">
+              {focusPlan.map((item) => (
+                <div key={item.day} className="grid gap-2 py-3 md:grid-cols-[120px_170px_1fr]">
+                  <p className="text-sm font-semibold text-slate-800">{item.day}</p>
+                  <p className="text-sm font-semibold text-slate-700">{item.work}</p>
+                  <p className="text-sm text-slate-600">{item.detail}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InterviewLoopPage() {
+  const analysis = getStoredAnalysisResult();
+  const missing = analysis?.missingSkills || [];
+  const topMissing = missing.slice(0, 6);
+  const suggestions = missing.slice(0, 5).map((skill) => ({
+    weak: `${skill} interview confidence low`,
+    resumeFix: `Add one quantified bullet showing ${skill} in action.`,
+    projectFix: `Build mini project proving ${skill} depth.`,
+  }));
+  const loopFlow = [
+    "Interview reveals weak area",
+    "Convert weak area into resume bullet",
+    "Attach project proof",
+    "Retest through mock interview",
+    "Promote section to final resume version",
+  ];
+  const defaultSuggestions = [{
+    weak: "No high-priority weak area detected",
+    resumeFix: "Maintain current resume structure and keep metrics updated.",
+    projectFix: "Continue role-aligned project depth for stronger interview proof.",
+  }];
+
+  return (
+    <div className="analyze-bg analyze-flat ats-flat min-h-screen">
+      <div className="w-full">
+        <WorkspaceSidebar />
+        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
+          <WorkspaceTopbar />
+          <PageExportActions className="mb-4" />
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Interview-to-Resume Loop</p>
+            <h1 className="mt-2 text-3xl font-bold md:text-5xl text-slate-900">Turn Weak Answers into Strong Resume Proof</h1>
+          </div>
+          <div className="editorial-strip p-6">
+            <p className="mt-3 max-w-3xl text-base text-slate-600">
+              This flow closes the gap between interview performance and resume quality. Every weak area becomes a concrete resume
+              improvement plus a project-backed proof signal.
+            </p>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="editorial-strip p-5">
+              <p className="text-sm text-slate-500">Detected Weak Skills</p>
+              <p className="mt-2 text-3xl font-bold text-slate-900">{topMissing.length}</p>
+            </div>
+            <div className="editorial-strip p-5 md:col-span-2">
+              <p className="text-sm font-semibold text-slate-700">Priority Queue</p>
+              <p className="mt-2 text-sm text-slate-600">
+                {topMissing.length ? topMissing.join(", ") : "No immediate weak skills. Focus on depth and consistency."}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 editorial-strip p-6">
+            <p className="text-sm font-semibold text-slate-700">Loop Execution Flow</p>
+            <div className="mt-4 divide-y divide-slate-200 border-y border-slate-200">
+              {loopFlow.map((item, idx) => (
+                <div key={item} className="grid gap-2 py-3 md:grid-cols-[64px_1fr]">
+                  <p className="text-sm font-semibold text-slate-500">Step {idx + 1}</p>
+                  <p className="text-sm text-slate-700">{item}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-4">
+            {(suggestions.length ? suggestions : defaultSuggestions).map((item, idx) => (
+              <div key={`${item.weak}-${idx}`} className="editorial-strip p-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Weak Signal {String(idx + 1).padStart(2, "0")}</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">{item.weak}</p>
+                <div className="mt-4 grid gap-0 border border-slate-200 md:grid-cols-2">
+                  <div className="border-b border-slate-200 p-4 md:border-b-0 md:border-r">
+                    <p className="text-sm font-semibold text-slate-700">Resume Fix</p>
+                    <p className="mt-1 text-sm text-slate-600">{item.resumeFix}</p>
+                  </div>
+                  <div className="p-4">
+                    <p className="text-sm font-semibold text-slate-700">Project Fix</p>
+                    <p className="mt-1 text-sm text-slate-600">{item.projectFix}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 editorial-strip p-6">
+            <p className="text-sm font-semibold text-slate-700">Weekly Review Rule</p>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              If the same weak skill appears in two interview rounds, you must update both resume and project evidence before next
+              application batch. This prevents repeating the same rejection pattern.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoadmapBuilderPage() {
+  const domainList = Object.keys(ROLE_SKILL_MAP);
+  const companyMap = {
+    "Frontend Developer": [
+      "Google", "Microsoft", "Amazon", "Adobe", "Atlassian",
+      "Vercel", "Razorpay", "CRED", "Swiggy", "Meesho",
+      "Flipkart", "Paytm", "Groww", "PhonePe", "Zomato",
+    ],
+    "Backend Developer": [
+      "Google", "Microsoft", "Amazon", "Meta", "Netflix",
+      "Stripe", "Postman", "Razorpay", "PhonePe", "Paytm",
+      "Swiggy", "Zomato", "CRED", "Meesho", "Flipkart",
+    ],
+    "Data Analyst": [
+      "Google", "Microsoft", "Amazon", "Deloitte", "EY",
+      "KPMG", "Accenture", "Fractal", "NielsenIQ", "Mu Sigma",
+      "Meesho", "Flipkart", "Swiggy", "Zomato", "Paytm",
+    ],
+    "Full Stack Developer": [
+      "Google", "Microsoft", "Amazon", "Zoho", "Freshworks",
+      "Postman", "Razorpay", "CRED", "Swiggy", "Meesho",
+      "Flipkart", "Paytm", "Groww", "PhonePe", "Zomato",
+    ],
+  };
+  const [domain, setDomain] = useState("");
+  const [company, setCompany] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const topTierCompanies = new Set(["Google", "Microsoft", "Amazon", "Meta", "Netflix", "Adobe", "Atlassian", "Stripe"]);
+  const midTierCompanies = new Set(["Razorpay", "Postman", "PhonePe", "Paytm", "CRED", "Swiggy", "Zomato", "Flipkart", "Meesho", "Groww", "Zoho", "Freshworks"]);
+  const baseSkills = domain ? (ROLE_SKILL_MAP[domain] || []) : [];
+  const companySkills = baseSkills.slice(0, 4);
+  const totalWeeks = !company
+    ? 0
+    : topTierCompanies.has(company)
+      ? 10
+      : midTierCompanies.has(company)
+        ? 8
+        : 6;
+  const weeklyTemplates = domain && company ? [
+    {
+      title: "Foundation Setup",
+      tasks: [
+        `Set up ${domain} learning stack and weekly calendar`,
+        "Create Git workflow, repo standards, and branch strategy",
+        `Ship starter build using ${baseSkills[0] || "core fundamentals"}`,
+      ],
+    },
+    {
+      title: "Core Build Sprint",
+      tasks: [
+        `Implement deep feature using ${baseSkills[1] || baseSkills[0] || "core skill"}`,
+        "Refactor architecture and enforce lint/test checks",
+        "Deploy v1 and write technical README with setup guide",
+      ],
+    },
+    {
+      title: "Skill Expansion",
+      tasks: [
+        `Build focused modules for ${companySkills.slice(0, 2).join(" and ") || "core stack"}`,
+        "Add input validation, error states, and logging",
+        "Record before/after performance and stability notes",
+      ],
+    },
+    {
+      title: "Production Readiness",
+      tasks: [
+        `Integrate ${companySkills[2] || companySkills[0] || "stack"} into end-to-end workflow`,
+        "Add tests for edge cases and critical paths",
+        "Prepare deployment + rollback checklist",
+      ],
+    },
+    {
+      title: "Company Alignment",
+      tasks: [
+        `Study ${company} role expectations and engineering culture`,
+        "Map JD requirements to your project proofs",
+        "Identify top 3 gaps and assign fixes",
+      ],
+    },
+    {
+      title: "Resume Upgrade",
+      tasks: [
+        "Rewrite summary and experience for target role",
+        `Inject role keywords: ${baseSkills.slice(0, 4).join(", ")}`,
+        "Create 3 quantified impact bullets from shipped work",
+      ],
+    },
+    {
+      title: "Interview Preparation",
+      tasks: [
+        "Prepare 20 technical questions with concise answers",
+        "Build project walkthrough narrative: problem -> tradeoff -> impact",
+        "Run mock interview round 1 and capture weak points",
+      ],
+    },
+    {
+      title: "Feedback Loop",
+      tasks: [
+        "Patch weak answers into resume/project evidence",
+        "Run mock interview round 2 under time pressure",
+        "Finalize concise STAR stories for behavior rounds",
+      ],
+    },
+    {
+      title: "Application Wave 1",
+      tasks: [
+        `Apply to ${company} and top matching peers`,
+        "Send referral and hiring-manager outreach with portfolio links",
+        "Track responses in apply board and classify outcomes",
+      ],
+    },
+    {
+      title: "Optimization + Wave 2",
+      tasks: [
+        "Analyze rejection/interview feedback patterns",
+        "Improve resume sections with low response rate",
+        "Launch second application wave with updated profile",
+      ],
+    },
+  ] : [];
+  const weeklyRoadmap = weeklyTemplates.slice(0, totalWeeks).map((template, idx) => ({
+    week: `Week ${idx + 1}`,
+    title: template.title,
+    tasks: template.tasks,
+  }));
+  const roadmapPage1 = weeklyRoadmap;
+
+  useEffect(() => {
+    if (!domain) {
+      setCompany("");
+      return;
+    }
+    const nextCompanies = companyMap[domain] || [];
+    if (!nextCompanies.includes(company)) {
+      setCompany("");
+    }
+  }, [domain]);
+
+  const handleGenerateRoadmap = () => {
+    if (!domain || !company) return;
+    setSubmitted(true);
+  };
+
+  return (
+    <div className="analyze-bg analyze-flat ats-flat min-h-screen">
+      <div className="w-full">
+        <WorkspaceSidebar />
+        <div className="stagger-auto min-h-screen px-4 py-5 md:px-8 md:py-8 lg:ml-[280px]">
+          <WorkspaceTopbar />
+          <PageExportActions className="mb-4" />
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Roadmap Builder</p>
+            <h1 className="mt-2 text-3xl font-bold md:text-5xl text-slate-900">0 to Job Roadmap</h1>
+          </div>
+          <div className="editorial-strip p-6">
+            <p className="mt-2 text-base text-slate-600">Select domain and company, then follow this execution roadmap.</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Domain</p>
+                <input
+                  list="roadmap-domains"
+                  value={domain}
+                  onChange={(e) => {
+                    setDomain(e.target.value);
+                    setSubmitted(false);
+                  }}
+                  className="mt-1 w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                  placeholder="Search domain..."
+                />
+                <datalist id="roadmap-domains">
+                  {domainList.map((item) => (
+                    <option key={item} value={item} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Target Company</p>
+                <input
+                  list="roadmap-companies"
+                  value={company}
+                  onChange={(e) => {
+                    setCompany(e.target.value);
+                    setSubmitted(false);
+                  }}
+                  className="mt-1 w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                  disabled={!domain}
+                  placeholder="Search company..."
+                />
+                <datalist id="roadmap-companies">
+                  {(companyMap[domain] || []).map((item) => (
+                    <option key={item} value={item} />
+                  ))}
+                </datalist>
+              </div>
+            </div>
+            <button
+              onClick={handleGenerateRoadmap}
+              disabled={!domain || !company}
+              className="mt-4 rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600"
+            >
+              Generate Roadmap
+            </button>
+          </div>
+
+          {submitted ? (
+            <>
+              <section className="mt-6 grid min-h-[calc(100vh-2rem)] w-full content-start gap-5 border border-slate-200 bg-white p-8 md:grid-cols-4">
+                <div className="editorial-strip p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">{totalWeeks} Weeks</p>
+                </div>
+                <div className="editorial-strip p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Core Skills</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">{baseSkills.length}</p>
+                </div>
+                <div className="editorial-strip p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Target</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">{company}</p>
+                </div>
+                <div className="editorial-strip p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Outcome</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">Apply Ready</p>
+                </div>
+                <div className="md:col-span-4 divide-y divide-slate-200 border-y border-slate-200">
+                  {roadmapPage1.map((item) => (
+                    <div key={item.week} className="grid gap-4 py-4 md:grid-cols-[140px_240px_1fr]">
+                      <p className="text-base font-semibold text-slate-800">{item.week}</p>
+                      <p className="text-base font-semibold text-slate-700">{item.title}</p>
+                      <div className="space-y-1">
+                        {item.tasks.map((task) => (
+                          <p key={task} className="text-base text-slate-600">{task}</p>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="md:col-span-4 grid gap-4 md:grid-cols-2">
+                  <div className="editorial-strip p-4">
+                    <p className="text-base font-semibold text-slate-800">Weekly Output Target</p>
+                    <p className="mt-2 text-base text-slate-600">Minimum 12-15 focused hours every week with 1 deployable output.</p>
+                  </div>
+                  <div className="editorial-strip p-4">
+                    <p className="text-base font-semibold text-slate-800">Consistency Rule</p>
+                    <p className="mt-2 text-base text-slate-600">If one week slips, extend final phase by one week before applying.</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="mt-0 grid min-h-[calc(100vh-2rem)] w-full content-start gap-5 border border-slate-200 border-t-0 bg-white p-8">
+                <h2 className="text-3xl font-bold text-slate-900">Project + Portfolio Plan</h2>
+                <p className="text-base text-slate-600">Build 3 projects aligned to {domain} hiring signals for {company}.</p>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="editorial-strip p-4">
+                    <p className="text-base font-semibold text-slate-800">Project 1: Core App</p>
+                    <p className="mt-2 text-base text-slate-600">One production-style project focused on {baseSkills[0] || "fundamentals"} and clean architecture.</p>
+                  </div>
+                  <div className="editorial-strip p-4">
+                    <p className="text-base font-semibold text-slate-800">Project 2: Scale Feature</p>
+                    <p className="mt-2 text-base text-slate-600">Add performance, edge-case handling, tests, and deployment notes.</p>
+                  </div>
+                  <div className="editorial-strip p-4">
+                    <p className="text-base font-semibold text-slate-800">Project 3: Company-style Case</p>
+                    <p className="mt-2 text-base text-slate-600">Create one problem statement similar to {company} and ship a full solution.</p>
+                  </div>
+                </div>
+                <div className="divide-y divide-slate-200 border-y border-slate-200">
+                  {["README with architecture diagram", "Live demo + short walkthrough video", "Impact metrics: latency, throughput, accuracy", "Document tradeoffs and future improvements"].map((item) => (
+                    <p key={item} className="py-3 text-base text-slate-700">{item}</p>
+                  ))}
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="editorial-strip p-4">
+                    <p className="text-sm font-semibold text-slate-800">Milestone Checks</p>
+                    <p className="mt-2 text-sm text-slate-600">End each week with deployed build, code cleanup, and changelog update.</p>
+                  </div>
+                  <div className="editorial-strip p-4">
+                    <p className="text-sm font-semibold text-slate-800">Proof Assets</p>
+                    <p className="mt-2 text-sm text-slate-600">Keep screenshots, demo links, and architecture notes ready for interviews.</p>
+                  </div>
+                </div>
+                <div className="editorial-strip p-4">
+                  <p className="text-sm font-semibold text-slate-800">Review Gate</p>
+                  <p className="mt-2 text-sm text-slate-600">Before moving phase, ensure project quality, readability, and one measurable result is documented.</p>
+                </div>
+              </section>
+
+              <section className="mt-0 grid min-h-[calc(100vh-2rem)] w-full content-start gap-5 border border-slate-200 border-t-0 bg-white p-8">
+                <h2 className="text-3xl font-bold text-slate-900">Resume + Interview Preparation</h2>
+                <p className="text-base text-slate-600">Translate work into recruiter language and interview-ready stories.</p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="editorial-strip p-4">
+                    <p className="text-base font-semibold text-slate-800">Resume Rewrite Checklist</p>
+                    <div className="mt-2 space-y-2">
+                      <p className="text-base text-slate-600">Use domain keywords: {baseSkills.slice(0, 5).join(", ")}</p>
+                      <p className="text-base text-slate-600">Every bullet must contain action + metric + impact.</p>
+                      <p className="text-base text-slate-600">Customize summary for {company} role expectations.</p>
+                    </div>
+                  </div>
+                  <div className="editorial-strip p-4">
+                    <p className="text-base font-semibold text-slate-800">Interview Drill Plan</p>
+                    <div className="mt-2 space-y-2">
+                      <p className="text-base text-slate-600">Prepare 10 technical Q&A around core stack.</p>
+                      <p className="text-base text-slate-600">Prepare 5 STAR stories for ownership and problem-solving.</p>
+                      <p className="text-base text-slate-600">Run 3 mock interviews and refine weak answers.</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="editorial-strip p-4">
+                  <p className="text-base font-semibold text-slate-800">Weekly Review System</p>
+                  <p className="mt-2 text-base text-slate-600">End of each week: re-score resume, compare gaps, and update next-week tasks before applying.</p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="editorial-strip p-4">
+                    <p className="text-sm font-semibold text-slate-800">Mock Round 1</p>
+                    <p className="mt-2 text-sm text-slate-600">Focus on basics, coding flow, and communication clarity.</p>
+                  </div>
+                  <div className="editorial-strip p-4">
+                    <p className="text-sm font-semibold text-slate-800">Mock Round 2</p>
+                    <p className="mt-2 text-sm text-slate-600">Go deep on projects, tradeoffs, and failure handling.</p>
+                  </div>
+                  <div className="editorial-strip p-4">
+                    <p className="text-sm font-semibold text-slate-800">Mock Round 3</p>
+                    <p className="mt-2 text-sm text-slate-600">Final pressure simulation with timed answers.</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="mt-0 grid min-h-[calc(100vh-2rem)] w-full content-start gap-5 border border-slate-200 border-t-0 bg-white p-8">
+                <h2 className="text-3xl font-bold text-slate-900">Apply Execution Calendar</h2>
+                <p className="text-base text-slate-600">Final page: application wave plan for {company} and similar companies.</p>
+                <div className="divide-y divide-slate-200 border-y border-slate-200 bg-white">
+                  {[
+                    "Day 1: Final ATS pass, resume freeze, LinkedIn headline update.",
+                    `Day 2: Apply to ${company} + 3 similar companies with tailored bullets.`,
+                    "Day 3: Send referral/outreach messages with portfolio links.",
+                    "Day 4: Practice round-1 interview questions and system walkthrough.",
+                    "Day 5: Track responses, iterate resume based on rejections/interview feedback.",
+                  ].map((step, idx) => (
+                    <div key={step} className="grid gap-2 py-3 md:grid-cols-[110px_1fr]">
+                      <p className="text-base font-semibold text-slate-800">Step {idx + 1}</p>
+                      <p className="text-base text-slate-600">{step}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="editorial-strip p-4">
+                    <p className="text-sm font-semibold text-slate-800">Tracking Board</p>
+                    <p className="mt-2 text-sm text-slate-600">Track status as Applied, OA, Interview, Hold, Rejected.</p>
+                  </div>
+                  <div className="editorial-strip p-4">
+                    <p className="text-sm font-semibold text-slate-800">Iteration Rule</p>
+                    <p className="mt-2 text-sm text-slate-600">After every 10 applications, revise resume and outreach template once.</p>
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="editorial-strip p-4">
+                    <p className="text-base font-semibold text-slate-800">Weekly Output Target</p>
+                    <p className="mt-2 text-base text-slate-600">Minimum 12-15 focused hours every week with 1 deployable output.</p>
+                  </div>
+                  <div className="editorial-strip p-4">
+                    <p className="text-base font-semibold text-slate-800">Consistency Rule</p>
+                    <p className="mt-2 text-base text-slate-600">If one week slips, extend final phase by one week before applying.</p>
+                  </div>
+                </div>
+              </section>
+            </>
+          ) : (
+            <div className="mt-6 border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+              Select domain and company, then click <span className="font-semibold text-slate-800">Generate Roadmap</span> to view full plan.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ThemeClassSync({ isDark }) {
+  const location = useLocation();
+
+  useEffect(() => {
+    const isLanding = location.pathname === "/";
+    document.documentElement.classList.toggle("theme-dark", !isLanding && isDark);
+  }, [isDark, location.pathname]);
+
+  return null;
+}
+
 function App() {
   const [isDark, setIsDark] = useState(() => appState.getTheme());
   const toggleTheme = () => {
     setIsDark((prev) => {
       const next = !prev;
-      document.documentElement.classList.toggle("theme-dark", next);
       appState.setTheme(next);
       return next;
     });
   };
   useEffect(() => {
-    document.documentElement.classList.toggle("theme-dark", isDark);
     appState.setTheme(isDark);
   }, [isDark]);
-  const isDemo = isDemoModeActive();
+
+  useEffect(() => {
+    const navEntry = performance.getEntriesByType("navigation")[0];
+    if (navEntry?.type === "reload") {
+      appState.clearAnalysisResult();
+      appState.clearFallbackResult();
+      appState.clearClaimResult();
+      appState.clearInterviewResult();
+      localStorage.removeItem(ANALYSIS_META_KEY);
+      localStorage.removeItem(ANALYSIS_DURATION_KEY);
+      localStorage.removeItem(ANALYSIS_HISTORY_KEY);
+      appState.setJdDetected(false);
+      SESSION_UPLOADED_RESUME_FILE = null;
+      SESSION_UPLOADED_RESUME_NAME = "";
+    }
+  }, []);
+
   return (
     <ThemeContext.Provider value={{ isDark, setIsDark, toggleTheme }}>
       <BrowserRouter>
-        <div className={isDemo ? "demo-galaxy" : ""}>
+        <ThemeClassSync isDark={isDark} />
+        <div>
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/analyze" element={<AnalyzePage />} />
-            <Route path="/ats-checker" element={<AtsCheckerPage />} />
-            <Route path="/role-match" element={<RoleMatchPage />} />
-            <Route path="/missing-skills" element={<MissingSkillsPage />} />
-            <Route path="/icm-score" element={<IcmScorePage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/ats-checker" element={<ProtectedWorkspaceRoute><AtsCheckerPage /></ProtectedWorkspaceRoute>} />
+            <Route path="/role-match" element={<ProtectedWorkspaceRoute><RoleMatchPage /></ProtectedWorkspaceRoute>} />
+            <Route path="/missing-skills" element={<ProtectedWorkspaceRoute><MissingSkillsPage /></ProtectedWorkspaceRoute>} />
+            <Route path="/icm-score" element={<ProtectedWorkspaceRoute><IcmScorePage /></ProtectedWorkspaceRoute>} />
+            <Route path="/roadmap-builder" element={<ProtectedWorkspaceRoute><RoadmapBuilderPage /></ProtectedWorkspaceRoute>} />
+            <Route path="/reports" element={<ProtectedWorkspaceRoute><ReportsPage /></ProtectedWorkspaceRoute>} />
+            <Route path="/settings" element={<ProtectedWorkspaceRoute><SettingsPage /></ProtectedWorkspaceRoute>} />
+            <Route path="/application-readiness" element={<ProtectedWorkspaceRoute><ApplicationReadinessPage /></ProtectedWorkspaceRoute>} />
+            <Route path="/interview-loop" element={<ProtectedWorkspaceRoute><InterviewLoopPage /></ProtectedWorkspaceRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

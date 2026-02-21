@@ -39,6 +39,7 @@ const COMPANY_TEMPLATES = [
 ];
 
 const TEST_STORE = new Map();
+const INTERVIEW_STORE = new Map();
 const SKILL_DISPLAY_MAP = {
   sql: 'SQL',
   mongodb: 'MongoDB',
@@ -349,8 +350,233 @@ const evaluateResumeClaimTest = ({ testId, answers = [], requestedCompanies = []
   };
 };
 
+const buildInterviewQuestions = (company) => {
+  const skills = company.requiredSkills.map((item) => item.skill).slice(0, 5);
+  const role = String(company.role || "").toLowerCase();
+  const scenarioSkill = skills[0] || "System Design";
+  const debugSkill = skills[1] || "APIs";
+
+  const roleSpecificQuestion = (() => {
+    if (role.includes("frontend")) {
+      return {
+        id: uid('q'),
+        skill: toTitleCase(scenarioSkill),
+        type: 'scenario',
+        prompt: 'Your page has become slow after shipping a new component tree. What should you do first?',
+        options: [
+          'Profile render paths, identify expensive updates, and optimize re-render behavior',
+          'Increase font size to improve perceived speed',
+          'Remove error boundaries from the app',
+          'Disable caching for all static assets',
+        ],
+        correctAnswer: 0,
+        weight: 100,
+      };
+    }
+    if (role.includes("data")) {
+      return {
+        id: uid('q'),
+        skill: toTitleCase(scenarioSkill),
+        type: 'scenario',
+        prompt: 'A dashboard metric dropped 20% overnight. What is the best first response?',
+        options: [
+          'Validate data pipeline freshness, compare source integrity, and segment the drop by cohort',
+          'Immediately change the chart type',
+          'Delete yesterday’s records and rerun manually',
+          'Assume seasonality without checking',
+        ],
+        correctAnswer: 0,
+        weight: 100,
+      };
+    }
+    return {
+      id: uid('q'),
+      skill: toTitleCase(scenarioSkill),
+      type: 'scenario',
+      prompt: 'API latency doubled after a release. What should be your first step?',
+      options: [
+        'Check release diff, inspect traces, and isolate the slow path before rollback/patch',
+        'Add more random retries without investigation',
+        'Ignore unless errors increase',
+        'Disable all monitoring alerts',
+      ],
+      correctAnswer: 0,
+      weight: 100,
+    };
+  })();
+
+  const roleSpecificDebugQuestion = (() => {
+    if (role.includes("frontend")) {
+      return {
+        id: uid('q'),
+        skill: toTitleCase(debugSkill),
+        type: 'debug',
+        prompt: 'A React form loses input state when switching tabs. Most likely cause?',
+        options: [
+          'Component remounting due to unstable keys or route-level unmounting',
+          'Using semantic HTML labels',
+          'Using CSS modules',
+          'Running Prettier on save',
+        ],
+        correctAnswer: 0,
+        weight: 100,
+      };
+    }
+    if (role.includes("data")) {
+      return {
+        id: uid('q'),
+        skill: toTitleCase(debugSkill),
+        type: 'debug',
+        prompt: 'SQL totals are inflated after a JOIN. Most common root cause?',
+        options: [
+          'One-to-many join duplication without proper grouping/deduplication',
+          'Using uppercase SQL keywords',
+          'Adding ORDER BY',
+          'Using aliases in SELECT',
+        ],
+        correctAnswer: 0,
+        weight: 100,
+      };
+    }
+    return {
+      id: uid('q'),
+      skill: toTitleCase(debugSkill),
+      type: 'debug',
+      prompt: 'User data endpoint returns stale values after update. Most likely issue?',
+      options: [
+        'Cache invalidation/TTL path is missing after write',
+        'TLS certificate was renewed',
+        'Console logs are disabled',
+        'Response JSON is pretty-printed',
+      ],
+      correctAnswer: 0,
+      weight: 100,
+    };
+  })();
+
+  const rounds = [
+    {
+      roundId: uid('round'),
+      title: 'Technical Basics',
+      questions: skills.slice(0, 3).map((skill) => buildQuestionSetForSkill(skill)[0]),
+    },
+    {
+      roundId: uid('round'),
+      title: 'Applied Scenarios',
+      questions: [
+        roleSpecificQuestion,
+        ...skills.slice(1, 2).map((skill) => ({
+          id: uid('q'),
+          skill: toTitleCase(skill),
+          type: 'scenario',
+          prompt: `In production, what best demonstrates strong ${toTitleCase(skill)} ownership?`,
+          options: [
+            'Can explain tradeoffs, deliver measurable outcomes, and handle failures',
+            'Only discusses theory and avoids implementation',
+            'Copies snippets without context',
+            'Avoids code reviews and incident follow-up',
+          ],
+          correctAnswer: 0,
+          weight: 100,
+        })),
+      ],
+    },
+    {
+      roundId: uid('round'),
+      title: 'Debug & Decision',
+      questions: [roleSpecificDebugQuestion],
+    },
+  ];
+
+  return rounds;
+};
+
+const createInterviewSimulation = ({ companyId, resumeSkills = [] }) => {
+  const company = getRequestedCompanies(companyId ? [companyId] : [])[0] || COMPANY_TEMPLATES[0];
+  const rounds = buildInterviewQuestions(company);
+  const questions = rounds.flatMap((round) => round.questions);
+  const sessionId = uid('interview');
+
+  INTERVIEW_STORE.set(sessionId, {
+    sessionId,
+    company,
+    resumeSkills: dedupeSkills(resumeSkills),
+    rounds,
+    createdAt: new Date().toISOString(),
+  });
+
+  return {
+    sessionId,
+    company: {
+      companyId: company.companyId,
+      companyName: company.companyName,
+      role: company.role,
+    },
+    rounds: rounds.map((round) => ({
+      roundId: round.roundId,
+      title: round.title,
+      questions: round.questions.map(stripAnswerKey),
+    })),
+    totalQuestions: questions.length,
+    estimatedMinutes: Math.max(10, questions.length * 2),
+  };
+};
+
+const evaluateInterviewSimulation = ({ sessionId, answers = [] }) => {
+  const session = INTERVIEW_STORE.get(sessionId);
+  if (!session) {
+    throw new Error('Invalid interview session. Please start a new simulation.');
+  }
+
+  const answerMap = new Map((answers || []).map((item) => [String(item.questionId || ''), Number(item.selectedOption)]));
+  const roundBreakdown = session.rounds.map((round) => {
+    let total = 0;
+    let correct = 0;
+    for (const question of round.questions) {
+      const selectedOption = answerMap.get(question.id);
+      const isAnswered = Number.isInteger(selectedOption) && selectedOption >= 0;
+      if (!isAnswered) {
+        continue;
+      }
+      total += 1;
+      if (selectedOption === question.correctAnswer) {
+        correct += 1;
+      }
+    }
+    const score = total > 0 ? Math.round((correct / total) * 100) : 0;
+    return { roundId: round.roundId, title: round.title, answered: total, score };
+  });
+
+  const answeredCount = roundBreakdown.reduce((sum, item) => sum + item.answered, 0);
+  const totalQuestions = session.rounds.reduce((sum, round) => sum + round.questions.length, 0);
+  const weightedScore = roundBreakdown.length
+    ? Math.round(roundBreakdown.reduce((sum, item) => sum + item.score, 0) / roundBreakdown.length)
+    : 0;
+  const recommendation = weightedScore >= 75
+    ? 'Strongly interview-ready for this company baseline.'
+    : weightedScore >= 50
+      ? 'Partially ready. Improve weak round areas before applying.'
+      : 'Needs focused preparation before shortlist-level interviews.';
+
+  return {
+    sessionId,
+    company: {
+      companyId: session.company.companyId,
+      companyName: session.company.companyName,
+      role: session.company.role,
+    },
+    overallScore: weightedScore,
+    answeredCount,
+    totalQuestions,
+    roundBreakdown,
+    recommendation,
+  };
+};
+
 module.exports = {
   COMPANY_TEMPLATES,
   createResumeClaimTest,
   evaluateResumeClaimTest,
+  createInterviewSimulation,
+  evaluateInterviewSimulation,
 };
