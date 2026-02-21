@@ -398,7 +398,7 @@ function LandingPage() {
             initial={{ opacity: 0, y: 22 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, delay: 0.28 }}
-            className="relative left-1/2 mt-10 w-screen -translate-x-1/2"
+            className="relative mt-10 w-full overflow-hidden"
           >
             <div className="relative overflow-hidden border-y border-stone-700/70 bg-gradient-to-r from-[#0b0b0c] via-[#111112] to-[#0b0b0c] py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(255,255,255,0.06),0_12px_28px_rgba(0,0,0,0.35)]">
               <div className="pointer-events-none absolute inset-y-0 left-0 w-28 bg-gradient-to-r from-black/55 to-transparent" />

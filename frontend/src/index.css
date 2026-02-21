@@ -225,6 +225,21 @@
   }
 }
 
+@media (max-width: 767px) {
+  .landing-hero-typewriter-wrap {
+    display: block;
+    width: 100%;
+  }
+
+  .landing-hero-typewriter {
+    white-space: normal;
+    width: auto;
+    border-right: 0;
+    animation: none;
+    overflow-wrap: anywhere;
+  }
+}
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
